@@ -212,15 +212,17 @@ extension AnnotationDataset {
 @MainActor
 @Observable
 final class AppModel {
-    var dataset: AnnotationDataset?
+    var dataset: AnnotationDataset? {
+        didSet { rebuildIndexes(); invalidateFilteredImages() }
+    }
     var selectedImageID: UUID?
     var selectedAnnotationID: UUID?
     var selectedCategoryID: UUID?
     var tool = AnnotationTool.select
     var browserMode = BrowserMode.workspace
-    var splitFilter = SplitFilter.all
-    var statusFilter = StatusFilter.all
-    var searchText = ""
+    var splitFilter = SplitFilter.all { didSet { invalidateFilteredImages() } }
+    var statusFilter = StatusFilter.all { didSet { invalidateFilteredImages() } }
+    var searchText = "" { didSet { invalidateFilteredImages() } }
     var viewport = CanvasViewport()
     var inspectorVisible = true
     var sidebarVisible = true
@@ -235,29 +237,42 @@ final class AppModel {
     @ObservationIgnored private var autosaveTask: Task<Void, Never>?
     @ObservationIgnored private var operationTask: Task<Void, Never>?
     @ObservationIgnored weak var undoManager: UndoManager?
+    @ObservationIgnored private var imagesByID: [UUID: DatasetImage] = [:]
+    @ObservationIgnored private var annotationsByID: [UUID: DatasetAnnotation] = [:]
+    @ObservationIgnored private var annotationsByImageID: [UUID: [DatasetAnnotation]] = [:]
+    @ObservationIgnored private var annotationCountsByCategoryID: [UUID: Int] = [:]
+    @ObservationIgnored private var categoryNamesByID: [UUID: String] = [:]
+    @ObservationIgnored private var filterRevision = 0
+    @ObservationIgnored private var cachedFilterRevision = -1
+    @ObservationIgnored private var cachedFilteredImages: [DatasetImage] = []
 
     init(services: any DatasetApplicationServices = LocalDatasetServices()) {
         self.services = services
     }
 
     var selectedImage: DatasetImage? {
-        dataset?.images.first { $0.id == selectedImageID }
+        selectedImageID.flatMap { imagesByID[$0] }
     }
 
     var selectedAnnotation: DatasetAnnotation? {
-        dataset?.annotations.first { $0.id == selectedAnnotationID }
+        selectedAnnotationID.flatMap { annotationsByID[$0] }
     }
 
     var annotationsForSelectedImage: [DatasetAnnotation] {
         guard let selectedImageID else { return [] }
-        return dataset?.annotations.filter { $0.imageID == selectedImageID } ?? []
+        return annotationsByImageID[selectedImageID] ?? []
     }
 
     var filteredImages: [DatasetImage] {
-        guard let dataset else { return [] }
-        return dataset.images.filter { image in
+        if cachedFilterRevision == filterRevision { return cachedFilteredImages }
+        guard let dataset else {
+            cachedFilteredImages = []
+            cachedFilterRevision = filterRevision
+            return []
+        }
+        let result = dataset.images.filter { image in
             let splitMatches = splitFilter == .all || String(describing: image.split).localizedCaseInsensitiveContains(splitFilter.rawValue)
-            let imageAnnotations = dataset.annotations.filter { $0.imageID == image.id }
+            let imageAnnotations = annotationsByImageID[image.id] ?? []
             let review = String(describing: image.reviewState)
             let statusMatches: Bool = switch statusFilter {
             case .all: true
@@ -269,14 +284,34 @@ final class AppModel {
             let queryMatches = searchText.isEmpty
                 || image.fileName.localizedCaseInsensitiveContains(searchText)
                 || imageAnnotations.contains { annotation in
-                    dataset.categories.first(where: { $0.id == annotation.categoryID })?.name.localizedCaseInsensitiveContains(searchText) == true
+                    categoryNamesByID[annotation.categoryID]?.localizedCaseInsensitiveContains(searchText) == true
                 }
             return splitMatches && statusMatches && queryMatches
         }
+        cachedFilteredImages = result
+        cachedFilterRevision = filterRevision
+        return result
     }
 
     func imageURL(for image: DatasetImage) -> URL? {
         dataset?.rootURL?.appending(path: image.relativePath)
+    }
+
+    func annotationCount(for imageID: UUID) -> Int {
+        annotationsByImageID[imageID]?.count ?? 0
+    }
+
+    func annotationCount(forCategoryID categoryID: UUID) -> Int {
+        annotationCountsByCategoryID[categoryID] ?? 0
+    }
+
+    func neighborImageURLs() -> [URL] {
+        let images = filteredImages
+        guard let selectedImageID, let index = images.firstIndex(where: { $0.id == selectedImageID }) else { return [] }
+        return [index - 1, index + 1].compactMap { neighborIndex in
+            guard images.indices.contains(neighborIndex) else { return nil }
+            return imageURL(for: images[neighborIndex])
+        }
     }
 
     func attachUndoManager(_ manager: UndoManager?) {
@@ -586,6 +621,26 @@ final class AppModel {
             guard !Task.isCancelled else { return }
             self?.save()
         }
+    }
+
+    private func rebuildIndexes() {
+        guard let dataset else {
+            imagesByID = [:]
+            annotationsByID = [:]
+            annotationsByImageID = [:]
+            annotationCountsByCategoryID = [:]
+            categoryNamesByID = [:]
+            return
+        }
+        imagesByID = Dictionary(uniqueKeysWithValues: dataset.images.map { ($0.id, $0) })
+        annotationsByID = Dictionary(uniqueKeysWithValues: dataset.annotations.map { ($0.id, $0) })
+        annotationsByImageID = Dictionary(grouping: dataset.annotations, by: \.imageID)
+        annotationCountsByCategoryID = dataset.annotations.reduce(into: [:]) { $0[$1.categoryID, default: 0] += 1 }
+        categoryNamesByID = Dictionary(uniqueKeysWithValues: dataset.categories.map { ($0.id, $0.name) })
+    }
+
+    private func invalidateFilteredImages() {
+        filterRevision &+= 1
     }
 
     private func registerUndo(action: String, operation: @escaping @MainActor (AppModel) -> Void) {

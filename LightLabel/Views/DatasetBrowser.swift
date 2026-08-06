@@ -25,7 +25,7 @@ struct DatasetList: View {
     @Bindable var model: AppModel
 
     var body: some View {
-        Table(model.filteredImages, selection: $model.selectedImageID) {
+        Table(model.filteredImages, selection: Binding<UUID?>(get: { model.selectedImageID }, set: { id in model.selectImage(id) })) {
             TableColumn("Image") { image in
                 HStack(spacing: 10) {
                     ThumbnailView(url: model.imageURL(for: image), maxPixelSize: 64)
@@ -48,7 +48,7 @@ struct DatasetList: View {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
             }
         } primaryAction: { ids in
-            model.selectedImageID = ids.first
+            model.selectImage(ids.first)
             model.browserMode = .workspace
         }
         .overlay { if model.filteredImages.isEmpty { ContentUnavailableView.search(text: model.searchText) } }
@@ -56,7 +56,7 @@ struct DatasetList: View {
     }
 
     private func annotationCount(_ imageID: UUID) -> Int {
-        model.dataset?.annotations.count { $0.imageID == imageID } ?? 0
+        model.annotationCount(for: imageID)
     }
 }
 
@@ -94,7 +94,7 @@ private struct ImageCard: View {
     }
 
     private var annotationCount: Int {
-        model.dataset?.annotations.count { $0.imageID == image.id } ?? 0
+        model.annotationCount(for: image.id)
     }
 
     private var reviewSymbol: String {
@@ -131,27 +131,10 @@ struct ThumbnailView: View {
 
 actor ThumbnailStore {
     static let shared = ThumbnailStore()
-    private let cache = NSCache<NSURL, NSImage>()
+    private init() {}
 
-    private init() {
-        cache.countLimit = 500
-        cache.totalCostLimit = 160 * 1_024 * 1_024
-    }
-
-    func image(at url: URL, maxPixelSize: Int) -> NSImage? {
-        let key = url as NSURL
-        if let cached = cache.object(forKey: key) { return cached }
-        let options = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, options) else { return nil }
-        let thumbnailOptions = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
-            kCGImageSourceShouldCacheImmediately: true
-        ] as CFDictionary
-        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions) else { return nil }
-        let result = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-        cache.setObject(result, forKey: key, cost: cgImage.bytesPerRow * cgImage.height)
-        return result
+    func image(at url: URL, maxPixelSize: Int) async -> NSImage? {
+        guard let cgImage = try? await ImageLoader.shared.thumbnail(at: url, maximumPixelSize: maxPixelSize) else { return nil }
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
     }
 }

@@ -15,7 +15,8 @@ struct AnnotationCanvas: NSViewRepresentable {
     }
 
     func updateNSView(_ view: AnnotationCanvasView, context: Context) {
-        view.configure(imageURL: model.selectedImage.flatMap(model.imageURL), imageSize: model.selectedImage?.size, annotations: model.annotationsForSelectedImage, categories: model.dataset?.categories ?? [], selectedID: model.selectedAnnotationID, tool: model.tool, viewport: model.viewport, showLabels: model.showLabels, showHandles: model.showHandles)
+        let selectedImage = model.selectedImage
+        view.configure(imageURL: selectedImage.flatMap(model.imageURL), prefetchURLs: model.neighborImageURLs(), imageSize: selectedImage?.size, annotations: model.annotationsForSelectedImage, categories: model.dataset?.categories ?? [], selectedID: model.selectedAnnotationID, tool: model.tool, viewport: model.viewport, showLabels: model.showLabels, showHandles: model.showHandles)
     }
 }
 
@@ -31,7 +32,7 @@ final class AnnotationCanvasView: NSView {
     private var imageURL: URL?
     private var imageSize: PixelSize?
     private var annotations: [DatasetAnnotation] = []
-    private var categories: [DatasetCategory] = []
+    private var categoryStyles: [UUID: (name: String, color: NSColor)] = [:]
     private var selectedID: UUID?
     private var tool = AnnotationTool.select
     private var zoom: CGFloat = 1
@@ -59,17 +60,18 @@ final class AnnotationCanvasView: NSView {
 
     required init?(coder: NSCoder) { super.init(coder: coder) }
 
-    func configure(imageURL: URL?, imageSize: PixelSize?, annotations: [DatasetAnnotation], categories: [DatasetCategory], selectedID: UUID?, tool: AnnotationTool, viewport: CanvasViewport, showLabels: Bool, showHandles: Bool) {
-        self.imageSize = imageSize; self.annotations = annotations; self.categories = categories; self.selectedID = selectedID; self.tool = tool; self.showLabels = showLabels; self.showHandles = showHandles
+    func configure(imageURL: URL?, prefetchURLs: [URL], imageSize: PixelSize?, annotations: [DatasetAnnotation], categories: [DatasetCategory], selectedID: UUID?, tool: AnnotationTool, viewport: CanvasViewport, showLabels: Bool, showHandles: Bool) {
+        self.imageSize = imageSize; self.annotations = annotations; self.categoryStyles = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, ($0.name, NSColor(hex: $0.colorHex))) }); self.selectedID = selectedID; self.tool = tool; self.showLabels = showLabels; self.showHandles = showHandles
         if lastFitRequest != viewport.fitRequest { lastFitRequest = viewport.fitRequest; zoom = 1; pan = .zero }
         if self.imageURL != imageURL {
             self.imageURL = imageURL; image = nil; loadTask?.cancel()
             if let imageURL {
                 loadTask = Task { [weak self] in
-                    let loaded = try? await ImageLoader(maximumConcurrentLoads: 1).fullImage(at: imageURL)
-                    guard !Task.isCancelled else { return }
+                    let loaded = try? await ImageLoader.shared.thumbnail(at: imageURL, maximumPixelSize: 4096, appliesOrientation: false)
+                    guard !Task.isCancelled, self?.imageURL == imageURL else { return }
                     self?.image = loaded; self?.needsDisplay = true
                 }
+                Task { await ImageLoader.shared.prefetch(prefetchURLs, maximumPixelSize: 4096, appliesOrientation: false) }
             }
         }
         needsDisplay = true
@@ -100,8 +102,8 @@ final class AnnotationCanvasView: NSView {
 
     private func draw(_ annotation: DatasetAnnotation, transform: CanvasMapping, context: CGContext) {
         let selected = annotation.id == selectedID, hovered = annotation.id == hoverID
-        let category = categories.first { $0.id == annotation.categoryID }
-        let color = NSColor(hex: category?.colorHex ?? "#4F8EF7")
+        let category = categoryStyles[annotation.categoryID]
+        let color = category?.color ?? NSColor(hex: "#4F8EF7")
         context.saveGState(); context.setStrokeColor(color.cgColor); context.setLineWidth(selected ? 2.5 : hovered ? 2 : 1.5)
         if annotation.source == .aiSuggestion { context.setLineDash(phase: 0, lengths: [7, 4]) }
         if annotation.isLocked { context.setAlpha(0.72) }
@@ -175,7 +177,7 @@ final class AnnotationCanvasView: NSView {
         self.drag = nil; needsDisplay = true
     }
 
-    override func mouseMoved(with event: NSEvent) { guard let transform else { return }; hoverID = hitTestAnnotation(convert(event.locationInWindow, from: nil), transform: transform)?.annotation.id; needsDisplay = true }
+    override func mouseMoved(with event: NSEvent) { guard let transform else { return }; let nextHoverID = hitTestAnnotation(convert(event.locationInWindow, from: nil), transform: transform)?.annotation.id; if hoverID != nextHoverID { hoverID = nextHoverID; needsDisplay = true } }
     override func scrollWheel(with event: NSEvent) { if event.modifierFlags.contains(.command) || abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) { zoomAround(convert(event.locationInWindow, from: nil), factor: exp(-event.scrollingDeltaY * 0.012)) } else { pan.x -= event.scrollingDeltaX; pan.y -= event.scrollingDeltaY; needsDisplay = true } }
     override func magnify(with event: NSEvent) { if event.phase == .began { magnificationStart = zoom }; zoom = min(max(magnificationStart * (1 + event.magnification), 0.1), 20); needsDisplay = true }
 

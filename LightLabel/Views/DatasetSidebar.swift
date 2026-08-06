@@ -132,7 +132,7 @@ struct DatasetSidebar: View {
     }
 
     private func categoryCount(_ id: UUID) -> Int {
-        model.dataset?.annotations.count { $0.categoryID == id } ?? 0
+        model.annotationCount(forCategoryID: id)
     }
 
     private func statusSymbol(_ status: StatusFilter) -> String {
