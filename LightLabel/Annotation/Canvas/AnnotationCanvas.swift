@@ -178,7 +178,7 @@ final class AnnotationCanvasView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) { guard let transform else { return }; let nextHoverID = hitTestAnnotation(convert(event.locationInWindow, from: nil), transform: transform)?.annotation.id; if hoverID != nextHoverID { hoverID = nextHoverID; needsDisplay = true } }
-    override func scrollWheel(with event: NSEvent) { if event.modifierFlags.contains(.command) || abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) { zoomAround(convert(event.locationInWindow, from: nil), factor: exp(-event.scrollingDeltaY * 0.012)) } else { pan.x -= event.scrollingDeltaX; pan.y -= event.scrollingDeltaY; needsDisplay = true } }
+    override func scrollWheel(with event: NSEvent) { let isPrecise = event.hasPreciseScrollingDeltas; let scale = isPrecise ? 1.0 : 10.0; let dx = event.scrollingDeltaX * scale; let dy = event.scrollingDeltaY * scale; let zoomDy = event.isDirectionInvertedFromDevice ? -dy : dy; if event.modifierFlags.contains(.command) || abs(dy) > abs(dx) { zoomAround(convert(event.locationInWindow, from: nil), factor: exp(zoomDy * (isPrecise ? 0.04 : 0.01))) } else { pan.x -= dx; pan.y -= dy; needsDisplay = true } }
     override func magnify(with event: NSEvent) { if event.phase == .began { magnificationStart = zoom }; zoom = min(max(magnificationStart * (1 + event.magnification), 0.1), 20); needsDisplay = true }
 
     override func keyDown(with event: NSEvent) {
