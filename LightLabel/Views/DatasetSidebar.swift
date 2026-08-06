@@ -74,6 +74,38 @@ struct DatasetSidebar: View {
                         }
                     }
 
+                    Section {
+                        ForEach(dataset.categories, id: \.id) { category in
+                            HStack(spacing: 10) {
+                                Circle().fill(Color(hex: category.colorHex)).frame(width: 10, height: 10)
+                                Text(category.name).lineLimit(1)
+                                Spacer()
+                                let isIncluded = model.includedCategoryIDs.contains(category.id)
+                                let isExcluded = model.excludedCategoryIDs.contains(category.id)
+                                Image(systemName: isIncluded ? "checkmark.circle.fill" : "checkmark.circle")
+                                    .foregroundStyle(isIncluded ? .green : .secondary)
+                                    .onTapGesture { model.toggleIncludeCategory(category.id) }
+                                    .help("Include only this class")
+                                Image(systemName: isExcluded ? "minus.circle.fill" : "minus.circle")
+                                    .foregroundStyle(isExcluded ? .red : .secondary)
+                                    .onTapGesture { model.toggleExcludeCategory(category.id) }
+                                    .help("Exclude this class")
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        if !model.includedCategoryIDs.isEmpty || !model.excludedCategoryIDs.isEmpty {
+                            Button {
+                                model.clearCategoryFilters()
+                            } label: {
+                                Label("Clear Class Filter", systemImage: "xmark.circle")
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                    } header: {
+                        Text("Filter by Class")
+                    }
+
                     Section("Statistics") {
                         LabeledContent("Images", value: dataset.images.count.formatted())
                         LabeledContent("Annotations", value: dataset.annotations.count.formatted())

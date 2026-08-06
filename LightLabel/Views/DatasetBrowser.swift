@@ -46,6 +46,8 @@ struct DatasetList: View {
         .contextMenu(forSelectionType: UUID.self) { ids in
             if let id = ids.first, let image = model.dataset?.images.first(where: { $0.id == id }), let url = model.imageURL(for: image) {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                Divider()
+                Button("Delete Image", role: .destructive) { model.deleteImage(id: id) }
             }
         } primaryAction: { ids in
             model.selectImage(ids.first)
@@ -90,6 +92,13 @@ private struct ImageCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            if let url = model.imageURL(for: image) {
+                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            }
+            Divider()
+            Button("Delete Image", role: .destructive) { model.deleteImage(id: image.id) }
+        }
         .accessibilityLabel("\(image.fileName), \(annotationCount) annotations")
     }
 

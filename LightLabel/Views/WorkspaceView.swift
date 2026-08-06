@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AnnotationWorkspace: View {
     @Bindable var model: AppModel
+    @State private var confirmDeleteImage = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,6 +20,8 @@ struct AnnotationWorkspace: View {
                     .help("Show labels")
                 Button { model.fitImage() } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }.help("Fit image")
                 Button { model.actualSize() } label: { Text("1:1").font(.caption.monospaced()) }.help("Actual size")
+                Divider().frame(height: 18)
+                Button(role: .destructive) { confirmDeleteImage = true } label: { Image(systemName: "trash") }.help("Delete image from dataset")
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, 14).padding(.vertical, 9)
@@ -32,6 +35,17 @@ struct AnnotationWorkspace: View {
             }
         }
         .navigationTitle(model.selectedImage?.fileName ?? "Workspace")
+        .confirmationDialog(
+            "Delete this image from the dataset?",
+            isPresented: $confirmDeleteImage,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Image", role: .destructive) {
+                if let id = model.selectedImageID { model.deleteImage(id: id) }
+            }
+        } message: {
+            Text("The image and its \(model.annotationsForSelectedImage.count) annotations will be removed.")
+        }
     }
 }
 

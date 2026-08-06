@@ -165,11 +165,21 @@ struct LocalDatasetServices: DatasetApplicationServices {
 actor LocalInferenceStore {
     private var engine: (any ImageInferenceEngine)?
     func load(_ url: URL) throws {
-        let modelURL: URL
-        if url.pathExtension.lowercased() == "mlmodelc" { modelURL = url }
-        else { modelURL = try MLModel.compileModel(at: url) }
-        let model = try MLModel(contentsOf: modelURL)
-        engine = try VisionCoreMLInferenceEngine(model: model)
+        let fileExtension = url.pathExtension.lowercased()
+        guard ["mlmodel", "mlpackage", "mlmodelc"].contains(fileExtension) else {
+            throw InferenceError.modelLoading("Choose an .mlmodel, .mlpackage, or .mlmodelc file")
+        }
+        do {
+            let modelURL = fileExtension == "mlmodelc" ? url : try MLModel.compileModel(at: url)
+            let configuration = MLModelConfiguration()
+            configuration.computeUnits = .all
+            let model = try MLModel(contentsOf: modelURL, configuration: configuration)
+            engine = try VisionCoreMLInferenceEngine(model: model)
+        } catch let error as InferenceError {
+            throw error
+        } catch {
+            throw InferenceError.modelLoading("\(url.lastPathComponent): \(error.localizedDescription)")
+        }
     }
     func infer(_ image: CGImage) async throws -> [InferenceDetection] {
         guard let engine else { throw InferenceError.modelLoading("Load a Core ML model first") }
@@ -223,6 +233,8 @@ final class AppModel {
     var splitFilter = SplitFilter.all { didSet { invalidateFilteredImages() } }
     var statusFilter = StatusFilter.all { didSet { invalidateFilteredImages() } }
     var searchText = "" { didSet { invalidateFilteredImages() } }
+    var includedCategoryIDs: Set<UUID> = [] { didSet { invalidateFilteredImages() } }
+    var excludedCategoryIDs: Set<UUID> = [] { didSet { invalidateFilteredImages() } }
     var viewport = CanvasViewport()
     var inspectorVisible = true
     var sidebarVisible = true
@@ -286,7 +298,11 @@ final class AppModel {
                 || imageAnnotations.contains { annotation in
                     categoryNamesByID[annotation.categoryID]?.localizedCaseInsensitiveContains(searchText) == true
                 }
-            return splitMatches && statusMatches && queryMatches
+            let imageCategoryIDs = Set(imageAnnotations.map { $0.categoryID })
+            let classMatches = !imageCategoryIDs.isDisjoint(with: excludedCategoryIDs)
+                ? false
+                : (includedCategoryIDs.isEmpty || !imageCategoryIDs.isDisjoint(with: includedCategoryIDs))
+            return splitMatches && statusMatches && queryMatches && classMatches
         }
         cachedFilteredImages = result
         cachedFilterRevision = filterRevision
@@ -564,6 +580,34 @@ final class AppModel {
         markDirty()
     }
 
+    func deleteImage(id: UUID, registeringUndo: Bool = true) {
+        guard var dataset, let index = dataset.images.firstIndex(where: { $0.id == id }) else { return }
+        let wasSelected = selectedImageID == id
+        let removed = dataset.images.remove(at: index)
+        let removedAnnotations = dataset.annotations.filter { $0.imageID == id }
+        dataset.annotations.removeAll { $0.imageID == id }
+        self.dataset = dataset
+        if wasSelected {
+            let images = filteredImages
+            let neighbor = images.indices.contains(index - 1) ? images[index - 1] : (images.indices.contains(index) ? images[index] : images.last)
+            selectImage(neighbor?.id)
+        }
+        if registeringUndo {
+            registerUndo(action: "Delete Image") { model in model.restoreImage(removed, annotations: removedAnnotations) }
+        }
+        markDirty()
+    }
+
+    func restoreImage(_ image: DatasetImage, annotations: [DatasetAnnotation]) {
+        guard var dataset else { return }
+        dataset.images.append(image)
+        dataset.annotations.append(contentsOf: annotations)
+        self.dataset = dataset
+        selectImage(image.id)
+        registerUndo(action: "Delete Image") { model in model.deleteImage(id: image.id, registeringUndo: false) }
+        markDirty()
+    }
+
     func deleteCategory(id: UUID) {
         guard var dataset else { return }
         dataset.annotations.removeAll { $0.categoryID == id }
@@ -571,7 +615,32 @@ final class AppModel {
         self.dataset = dataset
         selectedCategoryID = dataset.categories.first?.id
         selectedAnnotationID = nil
+        includedCategoryIDs.remove(id)
+        excludedCategoryIDs.remove(id)
         markDirty()
+    }
+
+    func toggleIncludeCategory(_ id: UUID) {
+        if includedCategoryIDs.contains(id) {
+            includedCategoryIDs.remove(id)
+        } else {
+            includedCategoryIDs.insert(id)
+            excludedCategoryIDs.remove(id)
+        }
+    }
+
+    func toggleExcludeCategory(_ id: UUID) {
+        if excludedCategoryIDs.contains(id) {
+            excludedCategoryIDs.remove(id)
+        } else {
+            excludedCategoryIDs.insert(id)
+            includedCategoryIDs.remove(id)
+        }
+    }
+
+    func clearCategoryFilters() {
+        includedCategoryIDs.removeAll()
+        excludedCategoryIDs.removeAll()
     }
 
     func setReviewState(_ state: ReviewState) {
@@ -584,8 +653,13 @@ final class AppModel {
     func loadModel() {
         let panel = NSOpenPanel()
         panel.title = "Load Core ML Model"
-        panel.allowedContentTypes = [.init(filenameExtension: "mlmodel") ?? .data, .init(filenameExtension: "mlpackage") ?? .package, .init(filenameExtension: "mlmodelc") ?? .data]
-        panel.canChooseDirectories = true
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "mlmodel", conformingTo: .data)!,
+            UTType(filenameExtension: "mlpackage", conformingTo: .package)!,
+            UTType(filenameExtension: "mlmodelc", conformingTo: .package)!
+        ]
+        panel.treatsFilePackagesAsDirectories = false
+        panel.canChooseDirectories = false
         panel.canChooseFiles = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
         perform(title: "Loading model") { [services] in
@@ -608,6 +682,8 @@ final class AppModel {
         selectedImageID = dataset.images.first?.id
         selectedCategoryID = dataset.categories.first?.id
         selectedAnnotationID = nil
+        includedCategoryIDs.removeAll()
+        excludedCategoryIDs.removeAll()
         isDirty = false
         validation = ValidationSummary()
         fitImage()
