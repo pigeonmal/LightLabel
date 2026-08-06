@@ -172,7 +172,7 @@ actor LocalInferenceStore {
         do {
             let modelURL = fileExtension == "mlmodelc" ? url : try MLModel.compileModel(at: url)
             let configuration = MLModelConfiguration()
-            configuration.computeUnits = .all
+            configuration.computeUnits = .cpuAndNeuralEngine
             let model = try MLModel(contentsOf: modelURL, configuration: configuration)
             engine = try VisionCoreMLInferenceEngine(model: model)
         } catch let error as InferenceError {
