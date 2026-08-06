@@ -1,0 +1,5 @@
+train: images/train
+test: images/test
+names:
+  0: person
+  1: 'hard hat'

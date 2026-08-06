@@ -1,0 +1,21 @@
+{
+  "info": { "description": "Detection fixture", "year": 2026 },
+  "images": [
+    { "id": 10, "file_name": "images/train/frame.jpg", "width": 200, "height": 100, "split": "train" }
+  ],
+  "annotations": [
+    {
+      "id": 42,
+      "image_id": 10,
+      "category_id": 3,
+      "bbox": [20, 20, 100, 40],
+      "area": 4000,
+      "iscrowd": 1,
+      "score": 0.8,
+      "attributes": { "source": "fixture" }
+    }
+  ],
+  "categories": [
+    { "id": 3, "name": "bird", "supercategory": "animal" }
+  ]
+}

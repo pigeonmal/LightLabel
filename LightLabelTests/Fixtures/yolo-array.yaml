@@ -1,0 +1,6 @@
+# List-form class mapping and conventional split paths.
+path: .
+train: images/train
+val: images/val
+test: images/test
+names: ['bird', 'traffic light']

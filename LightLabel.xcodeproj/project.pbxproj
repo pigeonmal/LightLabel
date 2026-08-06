@@ -1,0 +1,677 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		096479BECFAADC0845812528 /* yolo-detection.txt in Resources */ = {isa = PBXBuildFile; fileRef = 3588B88DF61B637A15F2C8E7 /* yolo-detection.txt */; };
+		1088DC892A09B38C1C9BFB58 /* AnnotationCanvas.swift in Sources */ = {isa = PBXBuildFile; fileRef = 930C12B999B59172FF3CCB50 /* AnnotationCanvas.swift */; };
+		110F9CE78F3DD2E55CE072BF /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F62B12DA61727A844A06671 /* RootView.swift */; };
+		13CA4110BEA3F88F5BCB3B22 /* coco-detection.json in Resources */ = {isa = PBXBuildFile; fileRef = 72C5CBCCFFD0004BF33E0F66 /* coco-detection.json */; };
+		1D8EAAB711A61E1AF4D71150 /* AnnotationGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6706199A83AF2A89B8AEE5B /* AnnotationGeometry.swift */; };
+		25A7DC2B7076376D2ADED073 /* ImageLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9F3ADC9B43632A480316EBB /* ImageLoader.swift */; };
+		279742057E5471D751609EDD /* YOLOExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 498364FE6682955001DD4DF9 /* YOLOExporter.swift */; };
+		2932CE189B0D2490E2B6228D /* StableID.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE17525A4ED78C5D5DD6255E /* StableID.swift */; };
+		2EE6C884C144A18EDD00FF3D /* yolo-array.yaml in Resources */ = {isa = PBXBuildFile; fileRef = 6481821178B7B4AD27584284 /* yolo-array.yaml */; };
+		373C95FFEABCD2988517557D /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73826E9413B3F02710568098 /* Cocoa.framework */; };
+		37D1A3B1EE04381AA3E1475C /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBAEC91780DBF6C815349C9F /* TestSupport.swift */; };
+		3F1A4A2636009B36CC99873D /* CanvasTransform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CDCEF617E4A1EFB2ACF063F /* CanvasTransform.swift */; };
+		46ABE4AA56AD287C3D78B392 /* COCOExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F85A762CB99955A22FCB831 /* COCOExporter.swift */; };
+		475E87AEEC29E898FCBC11F8 /* LightLabelSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66AF70F4DAA3C0ABAEABD76E /* LightLabelSmokeTests.swift */; };
+		491854B8EF8053573121C4EC /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 972C1361764E111171C8F12D /* WorkspaceView.swift */; };
+		6283B302271E7834EF5EA168 /* DatasetValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D0932A9A8E4596DAADA56BD /* DatasetValidator.swift */; };
+		6B160DC982442B0E3DEB623F /* YOLOImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B6CAFBD564D1BD6EBF12F68 /* YOLOImporter.swift */; };
+		6D4A10C8F6872BB9755F8C66 /* GeometryConversionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89E6E389450CD44282ED8F46 /* GeometryConversionTests.swift */; };
+		6FCEEEBAD23CEFCF3B68D2B5 /* DatasetFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = F36A4BFC48AF9283E7438B40 /* DatasetFormat.swift */; };
+		739D60A08E406F589A1DB3E2 /* StableIDValidatorPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23EB022D5B773D2CF764AE38 /* StableIDValidatorPersistenceTests.swift */; };
+		7C7C27F8F068C6098B72DA26 /* yolo-malformed.txt in Resources */ = {isa = PBXBuildFile; fileRef = A08FE546E5003580403737B1 /* yolo-malformed.txt */; };
+		8DCB30FE4F3962D883F1E9F4 /* DatasetSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E843399153E527CBCD79274A /* DatasetSidebar.swift */; };
+		97A0E06A131DCAF81858D4A2 /* DatasetBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F3ABB162831EF93712A2E0 /* DatasetBrowser.swift */; };
+		9D8B20DDED77DF70536B24CE /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73826E9413B3F02710568098 /* Cocoa.framework */; };
+		A4C20E40C8426EE12D98F579 /* coco-segmentation.json in Resources */ = {isa = PBXBuildFile; fileRef = 8D374791C4FB76AFF68CBE07 /* coco-segmentation.json */; };
+		A9D9F277D0A02F171E68A76A /* yolo-indexed.yaml in Resources */ = {isa = PBXBuildFile; fileRef = 92BE223FD3591CA8CB852DFA /* yolo-indexed.yaml */; };
+		B3DCBD5D5FC122B9923F6879 /* AnnotationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30ED9CA576D382C8030C5DB9 /* AnnotationModels.swift */; };
+		C0D7A3ECF2F154253E9E87C7 /* PolygonGeometryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8408E47649502E1B8E2872 /* PolygonGeometryTests.swift */; };
+		C30011D1EEB32CF8D99EBD7A /* yolo-segmentation.txt in Resources */ = {isa = PBXBuildFile; fileRef = 59F5C6F335C9F3CFAAB4256F /* yolo-segmentation.txt */; };
+		C4223A9D2B2E530BFFFB8CE9 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73826E9413B3F02710568098 /* Cocoa.framework */; };
+		C98669559C36B757DCFA8056 /* ProjectPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295B35C6AB62CD35B66610F4 /* ProjectPersistence.swift */; };
+		D414FD9A1D3869D84E67E399 /* tiny.png.base64 in Resources */ = {isa = PBXBuildFile; fileRef = B9168957BAF5F40F2C200832 /* tiny.png.base64 */; };
+		D8383081505E2DD788750364 /* LightLabelApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB8F95D06DA4199E043BEEAF /* LightLabelApp.swift */; };
+		D89E354D6F47552E85EB9BB3 /* NonMaximumSuppressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 591BC174A574A9F7785571AD /* NonMaximumSuppressionTests.swift */; };
+		D9BEDC321D5A7875C6BEFFDE /* COCOFormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1027A9077EDE341E21E7CF7F /* COCOFormatTests.swift */; };
+		ED75323E48C8FB8436EB1881 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C72F2E1EECF9FE67D38BC66 /* AppModel.swift */; };
+		F1960BD8B47791FF0443DA66 /* Inference.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9EE0DBC7A9475F9137D5090 /* Inference.swift */; };
+		F53351A085D3524DC47C4FCA /* COCOImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8641DD4689B6652722F442 /* COCOImporter.swift */; };
+		FD88E63CCE0774AAD806E491 /* YOLOFormatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC1656B05C958C5D4BE09AB /* YOLOFormatTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		5C1B5A0EC821740A8A8ED7FC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 804C1B2409E7C0AD1F3F8CE2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E44ACA502A7C56CA0749F0DF;
+			remoteInfo = LightLabel;
+		};
+		DB6BF47BDADA0DE3B2CAB8B1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 804C1B2409E7C0AD1F3F8CE2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E44ACA502A7C56CA0749F0DF;
+			remoteInfo = LightLabel;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0B6CAFBD564D1BD6EBF12F68 /* YOLOImporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = YOLOImporter.swift; path = LightLabel/Dataset/Importers/YOLOImporter.swift; sourceTree = "<group>"; };
+		0CDCEF617E4A1EFB2ACF063F /* CanvasTransform.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CanvasTransform.swift; path = LightLabel/Annotation/Geometry/CanvasTransform.swift; sourceTree = "<group>"; };
+		1027A9077EDE341E21E7CF7F /* COCOFormatTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = COCOFormatTests.swift; path = LightLabelTests/COCOFormatTests.swift; sourceTree = "<group>"; };
+		11EBFED52F8D79D30E91EBE0 /* LightLabelTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LightLabelTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1F62B12DA61727A844A06671 /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RootView.swift; path = LightLabel/Views/RootView.swift; sourceTree = "<group>"; };
+		23EB022D5B773D2CF764AE38 /* StableIDValidatorPersistenceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StableIDValidatorPersistenceTests.swift; path = LightLabelTests/StableIDValidatorPersistenceTests.swift; sourceTree = "<group>"; };
+		28F3ABB162831EF93712A2E0 /* DatasetBrowser.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DatasetBrowser.swift; path = LightLabel/Views/DatasetBrowser.swift; sourceTree = "<group>"; };
+		295B35C6AB62CD35B66610F4 /* ProjectPersistence.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProjectPersistence.swift; path = LightLabel/Dataset/Persistence/ProjectPersistence.swift; sourceTree = "<group>"; };
+		2D0932A9A8E4596DAADA56BD /* DatasetValidator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DatasetValidator.swift; path = LightLabel/Dataset/Validation/DatasetValidator.swift; sourceTree = "<group>"; };
+		30ED9CA576D382C8030C5DB9 /* AnnotationModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AnnotationModels.swift; path = LightLabel/Models/AnnotationModels.swift; sourceTree = "<group>"; };
+		3588B88DF61B637A15F2C8E7 /* yolo-detection.txt */ = {isa = PBXFileReference; includeInIndex = 1; name = "yolo-detection.txt"; path = "LightLabelTests/Fixtures/yolo-detection.txt"; sourceTree = "<group>"; };
+		498364FE6682955001DD4DF9 /* YOLOExporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = YOLOExporter.swift; path = LightLabel/Dataset/Exporters/YOLOExporter.swift; sourceTree = "<group>"; };
+		591BC174A574A9F7785571AD /* NonMaximumSuppressionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NonMaximumSuppressionTests.swift; path = LightLabelTests/NonMaximumSuppressionTests.swift; sourceTree = "<group>"; };
+		59F5C6F335C9F3CFAAB4256F /* yolo-segmentation.txt */ = {isa = PBXFileReference; includeInIndex = 1; name = "yolo-segmentation.txt"; path = "LightLabelTests/Fixtures/yolo-segmentation.txt"; sourceTree = "<group>"; };
+		6481821178B7B4AD27584284 /* yolo-array.yaml */ = {isa = PBXFileReference; includeInIndex = 1; name = "yolo-array.yaml"; path = "LightLabelTests/Fixtures/yolo-array.yaml"; sourceTree = "<group>"; };
+		66AF70F4DAA3C0ABAEABD76E /* LightLabelSmokeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LightLabelSmokeTests.swift; path = LightLabelUITests/LightLabelSmokeTests.swift; sourceTree = "<group>"; };
+		6C6BCE9E2B2BBC7660277A23 /* LightLabel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LightLabel.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6C72F2E1EECF9FE67D38BC66 /* AppModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppModel.swift; path = LightLabel/App/AppModel.swift; sourceTree = "<group>"; };
+		6F85A762CB99955A22FCB831 /* COCOExporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = COCOExporter.swift; path = LightLabel/Dataset/Exporters/COCOExporter.swift; sourceTree = "<group>"; };
+		72C5CBCCFFD0004BF33E0F66 /* coco-detection.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "coco-detection.json"; path = "LightLabelTests/Fixtures/coco-detection.json"; sourceTree = "<group>"; };
+		73826E9413B3F02710568098 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		7FD3CE8180404C3C21E8199D /* LightLabelUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LightLabelUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		89E6E389450CD44282ED8F46 /* GeometryConversionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GeometryConversionTests.swift; path = LightLabelTests/GeometryConversionTests.swift; sourceTree = "<group>"; };
+		8D374791C4FB76AFF68CBE07 /* coco-segmentation.json */ = {isa = PBXFileReference; includeInIndex = 1; name = "coco-segmentation.json"; path = "LightLabelTests/Fixtures/coco-segmentation.json"; sourceTree = "<group>"; };
+		8D8641DD4689B6652722F442 /* COCOImporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = COCOImporter.swift; path = LightLabel/Dataset/Importers/COCOImporter.swift; sourceTree = "<group>"; };
+		92BE223FD3591CA8CB852DFA /* yolo-indexed.yaml */ = {isa = PBXFileReference; includeInIndex = 1; name = "yolo-indexed.yaml"; path = "LightLabelTests/Fixtures/yolo-indexed.yaml"; sourceTree = "<group>"; };
+		930C12B999B59172FF3CCB50 /* AnnotationCanvas.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AnnotationCanvas.swift; path = LightLabel/Annotation/Canvas/AnnotationCanvas.swift; sourceTree = "<group>"; };
+		972C1361764E111171C8F12D /* WorkspaceView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WorkspaceView.swift; path = LightLabel/Views/WorkspaceView.swift; sourceTree = "<group>"; };
+		A08FE546E5003580403737B1 /* yolo-malformed.txt */ = {isa = PBXFileReference; includeInIndex = 1; name = "yolo-malformed.txt"; path = "LightLabelTests/Fixtures/yolo-malformed.txt"; sourceTree = "<group>"; };
+		AB8F95D06DA4199E043BEEAF /* LightLabelApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LightLabelApp.swift; path = LightLabel/App/LightLabelApp.swift; sourceTree = "<group>"; };
+		B9168957BAF5F40F2C200832 /* tiny.png.base64 */ = {isa = PBXFileReference; includeInIndex = 1; name = tiny.png.base64; path = LightLabelTests/Fixtures/tiny.png.base64; sourceTree = "<group>"; };
+		B9EE0DBC7A9475F9137D5090 /* Inference.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Inference.swift; path = LightLabel/AI/Inference.swift; sourceTree = "<group>"; };
+		BBAEC91780DBF6C815349C9F /* TestSupport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TestSupport.swift; path = LightLabelTests/TestSupport.swift; sourceTree = "<group>"; };
+		C6706199A83AF2A89B8AEE5B /* AnnotationGeometry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AnnotationGeometry.swift; path = LightLabel/Annotation/Geometry/AnnotationGeometry.swift; sourceTree = "<group>"; };
+		CE17525A4ED78C5D5DD6255E /* StableID.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StableID.swift; path = LightLabel/Utilities/StableID.swift; sourceTree = "<group>"; };
+		D9F3ADC9B43632A480316EBB /* ImageLoader.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ImageLoader.swift; path = LightLabel/ImagePipeline/ImageLoader.swift; sourceTree = "<group>"; };
+		DF8408E47649502E1B8E2872 /* PolygonGeometryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PolygonGeometryTests.swift; path = LightLabelTests/PolygonGeometryTests.swift; sourceTree = "<group>"; };
+		E843399153E527CBCD79274A /* DatasetSidebar.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DatasetSidebar.swift; path = LightLabel/Views/DatasetSidebar.swift; sourceTree = "<group>"; };
+		F36A4BFC48AF9283E7438B40 /* DatasetFormat.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DatasetFormat.swift; path = LightLabel/Dataset/DatasetFormat.swift; sourceTree = "<group>"; };
+		FAC1656B05C958C5D4BE09AB /* YOLOFormatTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = YOLOFormatTests.swift; path = LightLabelTests/YOLOFormatTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		120C43AB00F42A2563012835 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				373C95FFEABCD2988517557D /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		151B9EBB83A85E6AE4C313D8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9D8B20DDED77DF70536B24CE /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C2220C17CCD2EF4F582C2210 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C4223A9D2B2E530BFFFB8CE9 /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		780253A0FC90C6EA4967FDD8 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A79460ABF31E4E1D9CD703D4 /* OS X */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		89761968D217BB716C707B51 /* LightLabel */ = {
+			isa = PBXGroup;
+			children = (
+				B9EE0DBC7A9475F9137D5090 /* Inference.swift */,
+				930C12B999B59172FF3CCB50 /* AnnotationCanvas.swift */,
+				C6706199A83AF2A89B8AEE5B /* AnnotationGeometry.swift */,
+				0CDCEF617E4A1EFB2ACF063F /* CanvasTransform.swift */,
+				6C72F2E1EECF9FE67D38BC66 /* AppModel.swift */,
+				AB8F95D06DA4199E043BEEAF /* LightLabelApp.swift */,
+				F36A4BFC48AF9283E7438B40 /* DatasetFormat.swift */,
+				6F85A762CB99955A22FCB831 /* COCOExporter.swift */,
+				498364FE6682955001DD4DF9 /* YOLOExporter.swift */,
+				8D8641DD4689B6652722F442 /* COCOImporter.swift */,
+				0B6CAFBD564D1BD6EBF12F68 /* YOLOImporter.swift */,
+				295B35C6AB62CD35B66610F4 /* ProjectPersistence.swift */,
+				2D0932A9A8E4596DAADA56BD /* DatasetValidator.swift */,
+				D9F3ADC9B43632A480316EBB /* ImageLoader.swift */,
+				30ED9CA576D382C8030C5DB9 /* AnnotationModels.swift */,
+				CE17525A4ED78C5D5DD6255E /* StableID.swift */,
+				28F3ABB162831EF93712A2E0 /* DatasetBrowser.swift */,
+				E843399153E527CBCD79274A /* DatasetSidebar.swift */,
+				1F62B12DA61727A844A06671 /* RootView.swift */,
+				972C1361764E111171C8F12D /* WorkspaceView.swift */,
+			);
+			name = LightLabel;
+			sourceTree = "<group>";
+		};
+		95E188CA2EF14930EFE5422D /* LightLabelUITests */ = {
+			isa = PBXGroup;
+			children = (
+				66AF70F4DAA3C0ABAEABD76E /* LightLabelSmokeTests.swift */,
+			);
+			name = LightLabelUITests;
+			sourceTree = "<group>";
+		};
+		A79460ABF31E4E1D9CD703D4 /* OS X */ = {
+			isa = PBXGroup;
+			children = (
+				73826E9413B3F02710568098 /* Cocoa.framework */,
+			);
+			name = "OS X";
+			sourceTree = "<group>";
+		};
+		C4CA74323CE9FB1D2AA9419B = {
+			isa = PBXGroup;
+			children = (
+				D7637C3924A7476B8BCA9B19 /* Products */,
+				780253A0FC90C6EA4967FDD8 /* Frameworks */,
+				89761968D217BB716C707B51 /* LightLabel */,
+				E53A587D5EB80250A186DA78 /* LightLabelTests */,
+				95E188CA2EF14930EFE5422D /* LightLabelUITests */,
+			);
+			sourceTree = "<group>";
+		};
+		D7637C3924A7476B8BCA9B19 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6C6BCE9E2B2BBC7660277A23 /* LightLabel.app */,
+				11EBFED52F8D79D30E91EBE0 /* LightLabelTests.xctest */,
+				7FD3CE8180404C3C21E8199D /* LightLabelUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E53A587D5EB80250A186DA78 /* LightLabelTests */ = {
+			isa = PBXGroup;
+			children = (
+				1027A9077EDE341E21E7CF7F /* COCOFormatTests.swift */,
+				72C5CBCCFFD0004BF33E0F66 /* coco-detection.json */,
+				8D374791C4FB76AFF68CBE07 /* coco-segmentation.json */,
+				B9168957BAF5F40F2C200832 /* tiny.png.base64 */,
+				6481821178B7B4AD27584284 /* yolo-array.yaml */,
+				3588B88DF61B637A15F2C8E7 /* yolo-detection.txt */,
+				92BE223FD3591CA8CB852DFA /* yolo-indexed.yaml */,
+				A08FE546E5003580403737B1 /* yolo-malformed.txt */,
+				59F5C6F335C9F3CFAAB4256F /* yolo-segmentation.txt */,
+				89E6E389450CD44282ED8F46 /* GeometryConversionTests.swift */,
+				591BC174A574A9F7785571AD /* NonMaximumSuppressionTests.swift */,
+				DF8408E47649502E1B8E2872 /* PolygonGeometryTests.swift */,
+				23EB022D5B773D2CF764AE38 /* StableIDValidatorPersistenceTests.swift */,
+				BBAEC91780DBF6C815349C9F /* TestSupport.swift */,
+				FAC1656B05C958C5D4BE09AB /* YOLOFormatTests.swift */,
+			);
+			name = LightLabelTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		28FF0D82C0048497FBEF3E9D /* LightLabelUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A0D88DA3EA234E769FC39AFA /* Build configuration list for PBXNativeTarget "LightLabelUITests" */;
+			buildPhases = (
+				1EEFACED8A59FD4DB2B872F5 /* Sources */,
+				151B9EBB83A85E6AE4C313D8 /* Frameworks */,
+				7B26959A3A816AE71B081C73 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				68977B488CF6CD7559F21260 /* PBXTargetDependency */,
+			);
+			name = LightLabelUITests;
+			productName = LightLabelUITests;
+			productReference = 7FD3CE8180404C3C21E8199D /* LightLabelUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		B709893FA90A0D93B406C5AF /* LightLabelTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 555005774450126FB6EEE867 /* Build configuration list for PBXNativeTarget "LightLabelTests" */;
+			buildPhases = (
+				B3DFF32310D4A70CB67EF38D /* Sources */,
+				120C43AB00F42A2563012835 /* Frameworks */,
+				E8BB5105486BE4077BE19E3A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				948EE1B14DC2C6AEB1FF4190 /* PBXTargetDependency */,
+			);
+			name = LightLabelTests;
+			productName = LightLabelTests;
+			productReference = 11EBFED52F8D79D30E91EBE0 /* LightLabelTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E44ACA502A7C56CA0749F0DF /* LightLabel */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E23BE355473E4252C80148C0 /* Build configuration list for PBXNativeTarget "LightLabel" */;
+			buildPhases = (
+				A43E76B881803A1C6835CA72 /* Sources */,
+				C2220C17CCD2EF4F582C2210 /* Frameworks */,
+				1E7C226AACF0F7CA39F56C63 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LightLabel;
+			productName = LightLabel;
+			productReference = 6C6BCE9E2B2BBC7660277A23 /* LightLabel.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		804C1B2409E7C0AD1F3F8CE2 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+			};
+			buildConfigurationList = 0CBA65B0C6F696D3CB4BFF80 /* Build configuration list for PBXProject "LightLabel" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = C4CA74323CE9FB1D2AA9419B;
+			minimizedProjectReferenceProxies = 0;
+			preferredProjectObjectVersion = 100;
+			productRefGroup = D7637C3924A7476B8BCA9B19 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E44ACA502A7C56CA0749F0DF /* LightLabel */,
+				B709893FA90A0D93B406C5AF /* LightLabelTests */,
+				28FF0D82C0048497FBEF3E9D /* LightLabelUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1E7C226AACF0F7CA39F56C63 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7B26959A3A816AE71B081C73 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E8BB5105486BE4077BE19E3A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				13CA4110BEA3F88F5BCB3B22 /* coco-detection.json in Resources */,
+				A4C20E40C8426EE12D98F579 /* coco-segmentation.json in Resources */,
+				D414FD9A1D3869D84E67E399 /* tiny.png.base64 in Resources */,
+				2EE6C884C144A18EDD00FF3D /* yolo-array.yaml in Resources */,
+				096479BECFAADC0845812528 /* yolo-detection.txt in Resources */,
+				A9D9F277D0A02F171E68A76A /* yolo-indexed.yaml in Resources */,
+				7C7C27F8F068C6098B72DA26 /* yolo-malformed.txt in Resources */,
+				C30011D1EEB32CF8D99EBD7A /* yolo-segmentation.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1EEFACED8A59FD4DB2B872F5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				475E87AEEC29E898FCBC11F8 /* LightLabelSmokeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A43E76B881803A1C6835CA72 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F1960BD8B47791FF0443DA66 /* Inference.swift in Sources */,
+				1088DC892A09B38C1C9BFB58 /* AnnotationCanvas.swift in Sources */,
+				1D8EAAB711A61E1AF4D71150 /* AnnotationGeometry.swift in Sources */,
+				3F1A4A2636009B36CC99873D /* CanvasTransform.swift in Sources */,
+				ED75323E48C8FB8436EB1881 /* AppModel.swift in Sources */,
+				D8383081505E2DD788750364 /* LightLabelApp.swift in Sources */,
+				6FCEEEBAD23CEFCF3B68D2B5 /* DatasetFormat.swift in Sources */,
+				46ABE4AA56AD287C3D78B392 /* COCOExporter.swift in Sources */,
+				279742057E5471D751609EDD /* YOLOExporter.swift in Sources */,
+				F53351A085D3524DC47C4FCA /* COCOImporter.swift in Sources */,
+				6B160DC982442B0E3DEB623F /* YOLOImporter.swift in Sources */,
+				C98669559C36B757DCFA8056 /* ProjectPersistence.swift in Sources */,
+				6283B302271E7834EF5EA168 /* DatasetValidator.swift in Sources */,
+				25A7DC2B7076376D2ADED073 /* ImageLoader.swift in Sources */,
+				B3DCBD5D5FC122B9923F6879 /* AnnotationModels.swift in Sources */,
+				2932CE189B0D2490E2B6228D /* StableID.swift in Sources */,
+				97A0E06A131DCAF81858D4A2 /* DatasetBrowser.swift in Sources */,
+				8DCB30FE4F3962D883F1E9F4 /* DatasetSidebar.swift in Sources */,
+				110F9CE78F3DD2E55CE072BF /* RootView.swift in Sources */,
+				491854B8EF8053573121C4EC /* WorkspaceView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B3DFF32310D4A70CB67EF38D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D9BEDC321D5A7875C6BEFFDE /* COCOFormatTests.swift in Sources */,
+				6D4A10C8F6872BB9755F8C66 /* GeometryConversionTests.swift in Sources */,
+				D89E354D6F47552E85EB9BB3 /* NonMaximumSuppressionTests.swift in Sources */,
+				C0D7A3ECF2F154253E9E87C7 /* PolygonGeometryTests.swift in Sources */,
+				739D60A08E406F589A1DB3E2 /* StableIDValidatorPersistenceTests.swift in Sources */,
+				37D1A3B1EE04381AA3E1475C /* TestSupport.swift in Sources */,
+				FD88E63CCE0774AAD806E491 /* YOLOFormatTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		68977B488CF6CD7559F21260 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = LightLabel;
+			target = E44ACA502A7C56CA0749F0DF /* LightLabel */;
+			targetProxy = DB6BF47BDADA0DE3B2CAB8B1 /* PBXContainerItemProxy */;
+		};
+		948EE1B14DC2C6AEB1FF4190 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = LightLabel;
+			target = E44ACA502A7C56CA0749F0DF /* LightLabel */;
+			targetProxy = 5C1B5A0EC821740A8A8ED7FC /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2922D9911953789F2EEC1980 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		2D3FA9110DB293501F4D199F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lightlabel.app.uitests;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = LightLabel;
+			};
+			name = Debug;
+		};
+		57DCDC16D4820889423E9A3E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = LightLabel;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lightlabel.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		B595409EFB86FFDF9AAAEC3A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = LightLabel;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lightlabel.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		C199C4F79DB7AFD6F4CED2EF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lightlabel.app.uitests;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = LightLabel;
+			};
+			name = Release;
+		};
+		E58FEE5B1DA46951551407DC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		F1B00F896BAA4EA987A8D559 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lightlabel.app.tests;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LightLabel.app/Contents/MacOS/LightLabel";
+			};
+			name = Release;
+		};
+		F49C7D97B7CE7A910ACCD1DF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lightlabel.app.tests;
+				SDKROOT = macosx;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LightLabel.app/Contents/MacOS/LightLabel";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0CBA65B0C6F696D3CB4BFF80 /* Build configuration list for PBXProject "LightLabel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2922D9911953789F2EEC1980 /* Debug */,
+				E58FEE5B1DA46951551407DC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		555005774450126FB6EEE867 /* Build configuration list for PBXNativeTarget "LightLabelTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F1B00F896BAA4EA987A8D559 /* Release */,
+				F49C7D97B7CE7A910ACCD1DF /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A0D88DA3EA234E769FC39AFA /* Build configuration list for PBXNativeTarget "LightLabelUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C199C4F79DB7AFD6F4CED2EF /* Release */,
+				2D3FA9110DB293501F4D199F /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E23BE355473E4252C80148C0 /* Build configuration list for PBXNativeTarget "LightLabel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B595409EFB86FFDF9AAAEC3A /* Release */,
+				57DCDC16D4820889423E9A3E /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 804C1B2409E7C0AD1F3F8CE2 /* Project object */;
+}
