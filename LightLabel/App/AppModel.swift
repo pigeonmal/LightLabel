@@ -80,6 +80,13 @@ protocol DatasetApplicationServices: Sendable {
     func loadModel(from url: URL) async throws
 }
 
+private enum DatasetSyncMetadata {
+    static let format = "lightlabel.sync.format"
+    static let source = "lightlabel.sync.source"
+    static let yolo = "yolo"
+    static let coco = "coco"
+}
+
 struct LocalDatasetServices: DatasetApplicationServices {
     private let inferenceStore = LocalInferenceStore()
 
@@ -87,11 +94,15 @@ struct LocalDatasetServices: DatasetApplicationServices {
         let persistence = ProjectPersistence(directoryURL: url.appendingPathComponent(".lightlabel"))
         if let saved = try? await persistence.loadDataset() { return saved.withRootURL(url) }
         if FileManager.default.fileExists(atPath: url.appendingPathComponent("data.yaml").path) {
-            return try YOLOImporter().importDataset(at: url).dataset.withRootURL(url)
+            return try YOLOImporter().importDataset(at: url).dataset
+                .withRootURL(url)
+                .withSyncMetadata(format: DatasetSyncMetadata.yolo, source: url.path)
         }
         let candidates = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil).filter { $0.pathExtension.lowercased() == "json" }
         guard let json = candidates.first else { throw DatasetFormatError.unreadableFile("data.yaml or COCO JSON") }
-        return try COCOImporter().importDataset(at: json, imageRoot: url).dataset.withRootURL(url)
+        return try COCOImporter().importDataset(at: json, imageRoot: url).dataset
+            .withRootURL(url)
+            .withSyncMetadata(format: DatasetSyncMetadata.coco, source: json.path)
     }
 
     func createDataset(named name: String, at url: URL) async throws -> AnnotationDataset {
@@ -120,13 +131,18 @@ struct LocalDatasetServices: DatasetApplicationServices {
     func save(_ dataset: AnnotationDataset) async throws {
         guard let root = dataset.rootURL else { throw DatasetFormatError.invalidData("Dataset has no root folder") }
         try await ProjectPersistence(directoryURL: root.appendingPathComponent(".lightlabel")).save(dataset)
+        try synchronizeExternalDataset(dataset)
     }
 
     func importDataset(from url: URL) async throws -> AnnotationDataset {
         if url.pathExtension.lowercased() == "json" {
-            return try COCOImporter().importDataset(at: url, imageRoot: url.deletingLastPathComponent()).dataset.withRootURL(url.deletingLastPathComponent())
+            return try COCOImporter().importDataset(at: url, imageRoot: url.deletingLastPathComponent()).dataset
+                .withRootURL(url.deletingLastPathComponent())
+                .withSyncMetadata(format: DatasetSyncMetadata.coco, source: url.path)
         }
-        return try YOLOImporter().importDataset(at: url).dataset.withRootURL(url)
+        return try YOLOImporter().importDataset(at: url).dataset
+            .withRootURL(url)
+            .withSyncMetadata(format: DatasetSyncMetadata.yolo, source: url.path)
     }
 
     func export(_ dataset: AnnotationDataset, to url: URL) async throws {
@@ -135,6 +151,20 @@ struct LocalDatasetServices: DatasetApplicationServices {
         case .yoloSegmentation: _ = try YOLOExporter().export(dataset, to: url, task: .segmentation)
         case .coco: _ = try COCOExporter().export(dataset, to: url.appendingPathComponent("annotations.json"))
         case .cancel: throw CancellationError()
+        }
+    }
+
+    private func synchronizeExternalDataset(_ dataset: AnnotationDataset) throws {
+        guard let format = dataset.metadata[DatasetSyncMetadata.format],
+              let source = dataset.metadata[DatasetSyncMetadata.source] else { return }
+        let sourceURL = URL(fileURLWithPath: source)
+        switch format {
+        case DatasetSyncMetadata.yolo:
+            _ = try YOLOExporter().export(dataset, to: sourceURL, task: .automatic)
+        case DatasetSyncMetadata.coco:
+            _ = try COCOExporter().export(dataset, to: sourceURL)
+        default:
+            break
         }
     }
 
@@ -211,6 +241,13 @@ extension AnnotationDataset {
     func withRootURL(_ url: URL) -> Self {
         var copy = self
         copy.metadata["lightlabel.rootURL"] = url.standardizedFileURL.path
+        return copy
+    }
+
+    func withSyncMetadata(format: String, source: String) -> Self {
+        var copy = self
+        copy.metadata[DatasetSyncMetadata.format] = format
+        copy.metadata[DatasetSyncMetadata.source] = source
         return copy
     }
     var rootURL: URL? {
@@ -532,6 +569,7 @@ final class AppModel {
         guard var dataset, let index = dataset.annotations.firstIndex(where: { $0.id == annotationID }) else { return }
         dataset.annotations[index].categoryID = categoryID
         self.dataset = dataset
+        markDirty()
     }
 
     func toggleVisibility() {
@@ -582,6 +620,17 @@ final class AppModel {
 
     func deleteImage(id: UUID, registeringUndo: Bool = true) {
         guard var dataset, let index = dataset.images.firstIndex(where: { $0.id == id }) else { return }
+        if let root = dataset.rootURL {
+            let imageURL = root.appendingPathComponent(dataset.images[index].relativePath)
+            if FileManager.default.fileExists(atPath: imageURL.path) {
+                do {
+                    try FileManager.default.trashItem(at: imageURL, resultingItemURL: nil)
+                } catch {
+                    alertMessage = "Could not move \(dataset.images[index].fileName) to the Trash: \(error.localizedDescription)"
+                    return
+                }
+            }
+        }
         let wasSelected = selectedImageID == id
         let removed = dataset.images.remove(at: index)
         let removedAnnotations = dataset.annotations.filter { $0.imageID == id }
@@ -697,6 +746,11 @@ final class AppModel {
             guard !Task.isCancelled else { return }
             self?.save()
         }
+    }
+
+    // Used by small view-local mutations that do not have a dedicated command method.
+    func markDirtyForExternalMutation() {
+        markDirty()
     }
 
     private func rebuildIndexes() {

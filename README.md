@@ -13,7 +13,7 @@ The repository contains the complete format-independent domain model, geometry t
 - COCO bounding-box and polygon import/export
 - Dataset validation for category, image, reference, and geometry errors
 - Stable deterministic identifiers for imported records
-- Debounced, atomic project JSON persistence
+- Debounced, atomic project JSON persistence with automatic source-format synchronization
 - Lazy ImageIO image and thumbnail decoding
 - Native SwiftUI browser, workspace, sidebar, inspector, menus, and shortcuts
 - Local Core ML inference through Vision recognized objects or a configurable raw YOLO tensor decoder
@@ -148,7 +148,7 @@ LightLabel is designed to work fully offline. It contains no analytics, advertis
 - COCO unknown fields are not preserved generically. Only supported IDs, simple `info`, string attributes, score, and `iscrowd` are retained.
 - Raw YOLO decoding supports common rank-two effective tensors only. It does not decode masks, anchors, distribution focal loss, or model-specific multi-head outputs.
 - Core ML segmentation suggestion decoding is an extension point. The current model loader directly supports Vision recognized-object outputs; raw YOLO tensors require decoder configuration in code.
-- Persistence serializes a complete `.lightlabel/dataset.json`; dirty standard-label-file journaling, recovery prompts, and security-scoped bookmark persistence are not implemented.
+- Saving a modification automatically synchronizes the source format that was opened or imported: YOLO writes `data.yaml` and labels, and COCO rewrites its source JSON. The internal `.lightlabel/dataset.json` remains the recovery copy.
 - Polygon editing supports creation, selection, whole-polygon movement, vertex movement, and vertex deletion. Edge insertion and multipart polygons are not yet supported.
 - Batch inference/export progress is represented by cancellable UI state, but the current services perform one current-image inference or one export operation at a time.
 

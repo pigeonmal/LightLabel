@@ -122,6 +122,6 @@ struct AnnotationInspector: View {
         guard var dataset = model.dataset else { return }
         var copy = annotation; copy.id = UUID(); copy.source = .manual
         if case let .boundingBox(box) = copy.geometry { copy.geometry = .boundingBox(BoundingBox(x: min(box.x + 0.02, 1 - box.width), y: min(box.y + 0.02, 1 - box.height), width: box.width, height: box.height)) }
-        dataset.annotations.append(copy); model.dataset = dataset; model.selectedAnnotationID = copy.id
+        dataset.annotations.append(copy); model.dataset = dataset; model.selectedAnnotationID = copy.id; model.markDirtyForExternalMutation()
     }
 }

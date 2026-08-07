@@ -108,11 +108,11 @@ Normalized polygon area converts to pixel area by multiplying by `W * H`. Polygo
 
 ## Persistence And Autosave
 
-`ProjectPersistence` is an actor so save scheduling and writes are serialized. It encodes `AnnotationDataset` as sorted, pretty JSON with ISO-8601 dates. Writes go to a uniquely named temporary sibling and then move or replace the destination, preventing readers from observing a partially written file.
+`ProjectPersistence` is an actor so save scheduling and writes are serialized. It encodes `AnnotationDataset` as sorted, pretty JSON with ISO-8601 dates. Writes go to a uniquely named temporary sibling and then move or replace the destination, preventing readers from observing a partially written file. Imported datasets retain source-format metadata; each debounced application save also rewrites the original YOLO files or COCO JSON, so annotation changes do not require a manual export.
 
 `scheduleSave` cancels the previous pending task and delays the latest snapshot, currently 350 milliseconds by default. `flushScheduledSave` waits for that snapshot and rethrows a delayed write failure. The application model uses a two-second dirty-state debounce and delegates the final atomic write through `LocalDatasetServices`.
 
-The current persistence layer writes the complete `dataset.json`. Incremental standard-label writes, `.lightlabel` recovery state, dirty-file tracking, and interrupted-session recovery remain future service-layer work.
+The current persistence layer writes the complete `dataset.json`. Standard-format synchronization is performed from the saved model snapshot. Dirty-file tracking and interrupted-session recovery remain future service-layer work.
 
 ## Image Loading And Cache
 
