@@ -25,6 +25,7 @@ struct DatasetList: View {
     @Bindable var model: AppModel
     @State private var sortOrder = [KeyPathComparator<DatasetListRow>(\.fileName)]
     @State private var tableRows: [DatasetListRow] = []
+    @State private var sortingTask: Task<Void, Never>?
 
     var body: some View {
         Table(tableRows, selection: Binding<Set<UUID>>(get: { model.selectedImageIDs }, set: { ids in model.selectImages(ids) }), sortOrder: tableSortOrder) {
@@ -69,6 +70,9 @@ struct DatasetList: View {
         .task(id: model.browserDataRevision) {
             rebuildTableRows()
         }
+        .onDisappear {
+            sortingTask?.cancel()
+        }
     }
 
     private var tableSortOrder: Binding<[KeyPathComparator<DatasetListRow>]> {
@@ -76,20 +80,81 @@ struct DatasetList: View {
             get: { sortOrder },
             set: { newOrder in
                 sortOrder = newOrder
-                tableRows.sort(using: newOrder)
+                scheduleSort(Self.sortDescriptor(for: newOrder))
             }
         )
     }
 
     private func rebuildTableRows() {
-        var rows = model.filteredImages.map { DatasetListRow(image: $0, labelCount: model.annotationCount(for: $0.id)) }
-        rows.sort(using: sortOrder)
-        tableRows = rows
+        let rows = model.filteredImages.map { DatasetListRow(image: $0, labelCount: model.annotationCount(for: $0.id)) }
+        scheduleSort(Self.sortDescriptor(for: sortOrder), rows: rows)
+    }
+
+    private func scheduleSort(_ descriptor: DatasetListSortDescriptor, rows: [DatasetListRow]? = nil) {
+        sortingTask?.cancel()
+        let input = rows ?? tableRows
+        sortingTask = Task { @MainActor in
+            let sorted = await Task.detached(priority: .userInitiated) {
+                input.sorted(using: descriptor)
+            }.value
+            guard !Task.isCancelled else { return }
+            tableRows = sorted
+        }
+    }
+
+    private static func sortDescriptor(for order: [KeyPathComparator<DatasetListRow>]) -> DatasetListSortDescriptor {
+        guard let comparator = order.first else { return .init(key: .name, ascending: true) }
+        let key: DatasetListSortDescriptor.Key
+        if comparator.keyPath == \.fileName {
+            key = .name
+        } else if comparator.keyPath == \.pixelArea {
+            key = .size
+        } else if comparator.keyPath == \.splitRank {
+            key = .split
+        } else {
+            key = .labels
+        }
+        return .init(key: key, ascending: comparator.order == .forward)
     }
 }
 
-private struct DatasetListRow: Identifiable {
+private struct DatasetListSortDescriptor: Sendable, Equatable {
+    enum Key: Sendable {
+        case name
+        case size
+        case split
+        case labels
+    }
+
+    let key: Key
+    let ascending: Bool
+
+    func compare(_ lhs: DatasetListRow, _ rhs: DatasetListRow) -> Bool {
+        let result: ComparisonResult
+        switch key {
+        case .name:
+            result = lhs.fileName.localizedStandardCompare(rhs.fileName)
+        case .size:
+            result = lhs.pixelArea == rhs.pixelArea ? .orderedSame : (lhs.pixelArea < rhs.pixelArea ? .orderedAscending : .orderedDescending)
+        case .split:
+            result = lhs.splitRank == rhs.splitRank ? .orderedSame : (lhs.splitRank < rhs.splitRank ? .orderedAscending : .orderedDescending)
+        case .labels:
+            result = lhs.labelCount == rhs.labelCount ? .orderedSame : (lhs.labelCount < rhs.labelCount ? .orderedAscending : .orderedDescending)
+        }
+        if result == .orderedSame { return lhs.idString < rhs.idString }
+        return ascending ? result == .orderedAscending : result == .orderedDescending
+    }
+}
+
+private extension Array where Element == DatasetListRow {
+    func sorted(using descriptor: DatasetListSortDescriptor) -> [DatasetListRow] {
+        sorted(by: descriptor.compare)
+    }
+}
+
+private struct DatasetListRow: Identifiable, Sendable {
     let image: DatasetImage
+    let idString: String
     let fileName: String
     let pixelArea: Int64
     let splitRank: Int
@@ -99,6 +164,7 @@ private struct DatasetListRow: Identifiable {
     var id: UUID { image.id }
     init(image: DatasetImage, labelCount: Int) {
         self.image = image
+        self.idString = image.id.uuidString
         self.fileName = image.fileName
         self.pixelArea = Int64(image.size.width) * Int64(image.size.height)
         self.splitRank = Self.rank(for: image.split)
