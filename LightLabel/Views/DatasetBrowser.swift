@@ -5,19 +5,105 @@ import SwiftUI
 struct DatasetGrid: View {
     @Bindable var model: AppModel
     private let columns = [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 16)]
+    @State private var rows: [DatasetImage] = []
+    @State private var sortTask: Task<Void, Never>?
+    @State private var lastRevision = -1
+    @State private var lastSortKey = ImageSortKey.name
+    @State private var lastSortAscending = true
+    @State private var lastPrefetchCenter = -1
 
     var body: some View {
-        ScrollView {
-            LazyVGrid(columns: columns, spacing: 16) {
-                ForEach(model.browserImages, id: \.id) { image in
-                    ImageCard(model: model, image: image)
+        GeometryReader { proxy in
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: 16) {
+                    ForEach(rows.indices, id: \.self) { index in
+                        ImageCard(model: model, image: rows[index])
+                    }
+                }
+                .padding(18)
+                .background(alignment: .top) {
+                    GeometryReader { contentProxy in
+                        Color.clear.preference(
+                            key: GridScrollFrameKey.self,
+                            value: contentProxy.frame(in: .named("gridScroll"))
+                        )
+                    }
                 }
             }
-            .padding(18)
+            .coordinateSpace(name: "gridScroll")
+            .onPreferenceChange(GridScrollFrameKey.self) { frame in
+                prefetchVisible(frame: frame, viewportHeight: proxy.size.height)
+            }
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .overlay { if model.filteredImages.isEmpty { ContentUnavailableView.search(text: model.searchText) } }
+        .overlay {
+            if model.filteredImages.isEmpty {
+                ContentUnavailableView.search(text: model.searchText)
+            } else if rows.isEmpty {
+                ProgressView()
+            }
+        }
         .navigationTitle(model.dataset?.name ?? "Dataset")
+        .onAppear { rebuildIfNeeded() }
+        .onChange(of: model.browserDataRevision) { _, _ in rebuildIfNeeded() }
+        .onChange(of: model.imageSortKey) { _, _ in rebuildIfNeeded() }
+        .onChange(of: model.imageSortAscending) { _, _ in rebuildIfNeeded() }
+        .onDisappear { sortTask?.cancel() }
+    }
+
+    private func rebuildIfNeeded() {
+        let revision = model.browserDataRevision
+        let key = model.imageSortKey
+        let ascending = model.imageSortAscending
+        guard revision != lastRevision || key != lastSortKey || ascending != lastSortAscending else { return }
+        lastRevision = revision
+        lastSortKey = key
+        lastSortAscending = ascending
+        rebuildRows()
+    }
+
+    private func rebuildRows() {
+        let key = model.imageSortKey
+        let ascending = model.imageSortAscending
+        let base = model.filteredImages
+        let counts = key == .labels ? model.annotationCountsByImageID : [:]
+        let folded = key == .name ? model.browserNameSortKeys : [:]
+        sortTask?.cancel()
+        sortTask = Task { @MainActor in
+            let sorted = await Task.detached(priority: .userInitiated) {
+                AppModel.sortImages(base, key: key, ascending: ascending, annotationCounts: counts, foldedNameKeys: folded)
+            }.value
+            guard !Task.isCancelled else { return }
+            self.rows = sorted
+            self.model.publishBrowserImages(sorted, sortKey: key, ascending: ascending)
+        }
+    }
+
+    private func prefetchVisible(frame: CGRect, viewportHeight: CGFloat) {
+        guard !rows.isEmpty, frame.height > 0, viewportHeight > 0 else { return }
+        let offsetY = max(0, -frame.minY)
+        let total = frame.height
+        let count = rows.count
+        let topFraction = offsetY / total
+        let visibleFraction = min(1, viewportHeight / total)
+        let topIndex = Int(topFraction * Double(count))
+        let visibleCount = max(1, Int(visibleFraction * Double(count)))
+        let center = (topIndex + visibleCount) / 2
+        guard lastPrefetchCenter < 0 || abs(center - lastPrefetchCenter) >= max(1, visibleCount / 2) else { return }
+        lastPrefetchCenter = center
+        let start = max(0, topIndex - visibleCount)
+        let end = min(count, topIndex + visibleCount * 3)
+        guard end > start else { return }
+        let urls = rows[start..<end].compactMap { model.imageURL(for: $0) }
+        guard !urls.isEmpty else { return }
+        Task { await ImageLoader.shared.prefetch(urls, maximumPixelSize: 520) }
+    }
+}
+
+private struct GridScrollFrameKey: PreferenceKey {
+    nonisolated(unsafe) static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
     }
 }
 

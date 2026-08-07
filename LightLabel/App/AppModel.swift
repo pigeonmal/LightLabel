@@ -750,12 +750,43 @@ final class AppModel {
            cachedBrowserSortAscending == imageSortAscending {
             return cachedBrowserImages
         }
-        let result = filteredImages.sorted { lhs, rhs in
+        let result = Self.sortImages(
+            filteredImages,
+            key: imageSortKey,
+            ascending: imageSortAscending,
+            annotationCounts: imageSortKey == .labels ? annotationCountsByImageID : [:],
+            foldedNameKeys: fileNameSortKeyByID
+        )
+        cachedBrowserImages = result
+        cachedBrowserRevision = filterRevision
+        cachedBrowserSortKey = imageSortKey
+        cachedBrowserSortAscending = imageSortAscending
+        return result
+    }
+
+    var annotationCountsByImageID: [UUID: Int] {
+        annotationsByImageID.mapValues(\.count)
+    }
+
+    var browserNameSortKeys: [UUID: String] { fileNameSortKeyByID }
+
+    /// Single source of truth for browser ordering so the list, the grid, and
+    /// shift-select ranges all agree. Folds every name once up front so the
+    /// comparator never re-folds strings, which keeps sorts of 100k images off
+    /// the main thread cheap.
+    nonisolated static func sortImages(
+        _ images: [DatasetImage],
+        key: ImageSortKey,
+        ascending: Bool,
+        annotationCounts: [UUID: Int] = [:],
+        foldedNameKeys: [UUID: String] = [:]
+    ) -> [DatasetImage] {
+        images.sorted { lhs, rhs in
             let comparison: ComparisonResult
-            switch imageSortKey {
+            switch key {
             case .name:
-                let left = fileNameSortKeyByID[lhs.id] ?? Self.foldedSortKey(lhs.fileName)
-                let right = fileNameSortKeyByID[rhs.id] ?? Self.foldedSortKey(rhs.fileName)
+                let left = foldedNameKeys[lhs.id] ?? foldedSortKey(lhs.fileName)
+                let right = foldedNameKeys[rhs.id] ?? foldedSortKey(rhs.fileName)
                 comparison = (left as NSString).compare(right, options: .numeric)
             case .size:
                 let left = Int64(lhs.size.width) * Int64(lhs.size.height)
@@ -766,17 +797,22 @@ final class AppModel {
                 let left = order[lhs.split, default: 99], right = order[rhs.split, default: 99]
                 comparison = left == right ? .orderedSame : (left < right ? .orderedAscending : .orderedDescending)
             case .labels:
-                let left = annotationCount(for: lhs.id), right = annotationCount(for: rhs.id)
+                let left = annotationCounts[lhs.id] ?? 0, right = annotationCounts[rhs.id] ?? 0
                 comparison = left == right ? .orderedSame : (left < right ? .orderedAscending : .orderedDescending)
             }
             if comparison == .orderedSame { return lhs.id.uuidString < rhs.id.uuidString }
-            return imageSortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+            return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
         }
-        cachedBrowserImages = result
+    }
+
+    /// Lets the grid publish its off-main sort result so later sync reads of
+    /// `browserImages` (e.g. shift-select ranges) hit the cache instead of
+    /// re-sorting tens of thousands of images on the main thread.
+    func publishBrowserImages(_ images: [DatasetImage], sortKey: ImageSortKey, ascending: Bool) {
+        cachedBrowserImages = images
         cachedBrowserRevision = filterRevision
-        cachedBrowserSortKey = imageSortKey
-        cachedBrowserSortAscending = imageSortAscending
-        return result
+        cachedBrowserSortKey = sortKey
+        cachedBrowserSortAscending = ascending
     }
 
     func imageURL(for image: DatasetImage) -> URL? {
