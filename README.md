@@ -4,6 +4,18 @@ LightLabel is a native macOS application for preparing object-detection and inst
 
 The repository contains the complete format-independent domain model, geometry transforms, YOLO and COCO format code, dataset validation, atomic JSON persistence, bounded image loading, Core ML/Vision inference adapters, and a native three-column annotation interface.
 
+![LightLabel workspace preview](docs/images/lightlabel-preview.png)
+
+*LightLabel's native workspace with dataset navigation, editable annotations, and SAM2 Smart Polygon masks.*
+
+## Download
+
+For Apple Silicon Macs, download the latest Release build:
+
+[Download LightLabel for macOS arm64](https://github.com/pigeonmal/LightLabel/releases/latest/download/LightLabel-macOS-arm64.zip)
+
+The app runs locally and does not require an account or a cloud service. The app is locally signed but not notarized, so macOS may ask you to confirm the first launch because the build is distributed directly from GitHub.
+
 ## Features
 
 - Normalized bounding boxes and polygons in a format-independent model
@@ -33,6 +45,13 @@ The repository contains the complete format-independent domain model, geometry t
 - No network service or account
 
 The expected project is `LightLabel.xcodeproj` with the `LightLabel` scheme.
+
+## Quick start
+
+1. Download and unzip the latest arm64 release.
+2. Open `LightLabel.app` and choose **Create Dataset**, **Open Dataset**, or **Import Dataset**.
+3. Use **Workspace** for annotation, **Grid** for visual browsing, or **List** for Finder-style column sorting.
+4. Choose **Smart Polygon**, then click an object to generate an editable SAM2 mask polygon.
 
 ## Build
 

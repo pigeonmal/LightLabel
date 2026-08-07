@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1400" viewBox="0 0 2400 1400">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef4fb"/>
+      <stop offset="1" stop-color="#dce7f3"/>
+    </linearGradient>
+    <linearGradient id="canvas" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2634"/>
+      <stop offset="1" stop-color="#0f1722"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="22" stdDeviation="28" flood-color="#26384d" flood-opacity=".28"/>
+    </filter>
+    <pattern id="board" width="112" height="112" patternUnits="userSpaceOnUse">
+      <rect width="112" height="112" fill="#d7b98c"/>
+      <rect width="56" height="56" fill="#815d43"/>
+      <rect x="56" y="56" width="56" height="56" fill="#815d43"/>
+    </pattern>
+    <style>
+      .ui { font-family: "DejaVu Sans"; fill: #172235; }
+      .muted { fill: #728097; }
+      .small { font-size: 22px; }
+      .label { font-size: 24px; font-weight: 600; }
+      .title { font-size: 31px; font-weight: 700; }
+      .tiny { font-size: 18px; }
+    </style>
+  </defs>
+  <rect width="2400" height="1400" fill="url(#page)"/>
+  <rect x="92" y="70" width="2216" height="1260" rx="30" fill="#f8fafc" filter="url(#shadow)"/>
+  <rect x="92" y="70" width="2216" height="76" rx="30" fill="#eef2f7"/>
+  <rect x="92" y="116" width="2216" height="30" fill="#eef2f7"/>
+  <circle cx="132" cy="108" r="11" fill="#ff6259"/><circle cx="166" cy="108" r="11" fill="#ffbd2e"/><circle cx="200" cy="108" r="11" fill="#28c840"/>
+  <text x="1120" y="116" class="ui label" text-anchor="middle">LightLabel</text>
+
+  <rect x="92" y="146" width="330" height="1184" fill="#f3f6fa"/>
+  <line x1="422" y1="146" x2="422" y2="1330" stroke="#d9e0e9" stroke-width="2"/>
+  <text x="124" y="205" class="ui title">Chess.v3i</text>
+  <text x="124" y="238" class="ui small muted">YOLO · 1,248 images</text>
+  <rect x="120" y="270" width="274" height="48" rx="12" fill="#ffffff" stroke="#d7e0eb"/>
+  <text x="146" y="301" class="ui small muted">⌕  Search filenames and classes</text>
+  <text x="124" y="366" class="ui label muted">SPLIT</text>
+  <text x="142" y="410" class="ui label">◉  All images</text>
+  <text x="142" y="450" class="ui small muted">Train</text><text x="355" y="450" class="ui small muted" text-anchor="end">998</text>
+  <text x="142" y="486" class="ui small muted">Validation</text><text x="355" y="486" class="ui small muted" text-anchor="end">125</text>
+  <text x="142" y="522" class="ui small muted">Test</text><text x="355" y="522" class="ui small muted" text-anchor="end">125</text>
+  <text x="124" y="589" class="ui label muted">CLASSES</text>
+  <circle cx="143" cy="632" r="8" fill="#4f8ef7"/><text x="165" y="640" class="ui label">king</text><text x="355" y="640" class="ui small muted" text-anchor="end">184</text>
+  <circle cx="143" cy="678" r="8" fill="#e77852"/><text x="165" y="686" class="ui label">queen</text><text x="355" y="686" class="ui small muted" text-anchor="end">167</text>
+  <circle cx="143" cy="724" r="8" fill="#36a269"/><text x="165" y="732" class="ui label">rook</text><text x="355" y="732" class="ui small muted" text-anchor="end">221</text>
+  <circle cx="143" cy="770" r="8" fill="#b477d8"/><text x="165" y="778" class="ui label">bishop</text><text x="355" y="778" class="ui small muted" text-anchor="end">198</text>
+  <text x="124" y="848" class="ui label muted">STATISTICS</text>
+  <text x="142" y="892" class="ui small muted">Annotations</text><text x="355" y="892" class="ui small" text-anchor="end">3,842</text>
+  <text x="142" y="928" class="ui small muted">Showing</text><text x="355" y="928" class="ui small" text-anchor="end">1,248</text>
+  <rect x="120" y="1184" width="274" height="54" rx="14" fill="#ffffff" stroke="#d7e0eb"/>
+  <text x="154" y="1218" class="ui label">＋  Add images</text><text x="365" y="1218" class="ui label" text-anchor="end">⇅</text>
+
+  <rect x="422" y="146" width="1986" height="86" fill="#ffffff"/>
+  <line x1="422" y1="232" x2="2408" y2="232" stroke="#d9e0e9" stroke-width="2"/>
+  <rect x="458" y="168" width="282" height="48" rx="12" fill="#e8edf4"/>
+  <rect x="462" y="172" width="90" height="40" rx="9" fill="#ffffff"/>
+  <text x="507" y="199" class="ui small" text-anchor="middle">Workspace</text>
+  <text x="647" y="199" class="ui small muted" text-anchor="middle">Grid</text><text x="714" y="199" class="ui small muted" text-anchor="middle">List</text>
+  <rect x="820" y="168" width="390" height="48" rx="12" fill="#eef4ff" stroke="#c8daf9"/>
+  <text x="1015" y="199" class="ui label" text-anchor="middle">Select   Box   Polygon   ✦ Smart Polygon</text>
+  <text x="1900" y="198" class="ui small muted" text-anchor="end">Run AI</text>
+  <rect x="1930" y="168" width="88" height="48" rx="12" fill="#e9f0ff"/><text x="1974" y="199" class="ui label" fill="#2d6cdf" text-anchor="middle">✦</text>
+  <rect x="2032" y="168" width="120" height="48" rx="12" fill="#eef2f7"/><text x="2092" y="199" class="ui small" text-anchor="middle">Inspector</text>
+  <rect x="2170" y="168" width="74" height="48" rx="12" fill="#fff0f0"/><text x="2207" y="199" class="ui label" fill="#d9534f" text-anchor="middle">⌫</text>
+
+  <rect x="422" y="232" width="1506" height="1098" fill="url(#canvas)"/>
+  <rect x="508" y="302" width="1334" height="930" rx="6" fill="url(#board)"/>
+  <rect x="508" y="302" width="1334" height="930" rx="6" fill="#1a2532" opacity=".08"/>
+  <!-- stylized chess pieces -->
+  <g fill="#f6ead5" stroke="#4f392d" stroke-width="7">
+    <path d="M760 620 h-38 l15-42 h15 l-11-55 24-26 24 26-11 55 h15z"/>
+    <path d="M1110 930 h-66 l18-190 22-18 22 18z"/><path d="M1034 930 h86"/>
+    <path d="M1450 640 h-76 l18-28 12-65 h18 l12 65z"/>
+  </g>
+  <g fill="#292221" stroke="#f2d4a7" stroke-width="6">
+    <path d="M910 980 h-74 l16-172 22-16 22 16z"/><path d="M820 980 h106"/>
+    <path d="M1560 955 h-70 l16-150 19-20 19 20z"/><path d="M1470 955 h108"/>
+  </g>
+  <!-- editable SAM masks -->
+  <path d="M690 665 L710 527 789 494 850 548 834 683 758 706z" fill="#4f8ef7" opacity=".19" stroke="#4f8ef7" stroke-width="7"/>
+  <path d="M1032 990 L1050 756 1127 720 1172 765 1154 1002z" fill="#36a269" opacity=".17" stroke="#36a269" stroke-width="7"/>
+  <path d="M1430 678 L1440 540 1515 510 1560 548 1550 694z" fill="#e77852" opacity=".17" stroke="#e77852" stroke-width="7"/>
+  <g fill="#fff" stroke="#4f8ef7" stroke-width="4"><circle cx="710" cy="527" r="8"/><circle cx="789" cy="494" r="8"/><circle cx="850" cy="548" r="8"/><circle cx="758" cy="706" r="8"/></g>
+  <rect x="565" y="335" width="218" height="42" rx="10" fill="#172334" opacity=".84"/><text x="674" y="363" class="ui small" fill="#dbe8ff" text-anchor="middle">SAM2 Tiny · editable mask</text>
+  <text x="1175" y="1272" class="ui small" fill="#aebbd0" text-anchor="middle">Click an object with Smart Polygon to create an editable segmentation mask</text>
+
+  <rect x="1928" y="232" width="480" height="1098" fill="#f8fafc"/>
+  <line x1="1928" y1="232" x2="1928" y2="1330" stroke="#d9e0e9" stroke-width="2"/>
+  <text x="1962" y="292" class="ui title">Inspector</text>
+  <text x="1962" y="346" class="ui label muted">ANNOTATION</text>
+  <rect x="1960" y="372" width="416" height="58" rx="12" fill="#eef4ff" stroke="#bdd2fb"/>
+  <text x="1984" y="408" class="ui label">king</text><text x="2348" y="408" class="ui small muted" text-anchor="end">Manual</text>
+  <text x="1962" y="488" class="ui small muted">Geometry</text><text x="2348" y="488" class="ui small" text-anchor="end">Polygon · 24 points</text>
+  <text x="1962" y="532" class="ui small muted">Confidence</text><text x="2348" y="532" class="ui small" text-anchor="end">—</text>
+  <line x1="1962" y1="580" x2="2374" y2="580" stroke="#d9e0e9" stroke-width="2"/>
+  <text x="1962" y="634" class="ui label muted">IMAGE</text>
+  <text x="1962" y="682" class="ui small muted">Filename</text><text x="2348" y="682" class="ui small" text-anchor="end">board_0042.jpg</text>
+  <text x="1962" y="726" class="ui small muted">Size</text><text x="2348" y="726" class="ui small" text-anchor="end">1920 × 1080</text>
+  <text x="1962" y="770" class="ui small muted">Split</text><text x="2348" y="770" class="ui small" text-anchor="end">Train</text>
+  <rect x="1960" y="856" width="416" height="52" rx="12" fill="#eef2f7"/><text x="2168" y="889" class="ui label" text-anchor="middle">Set split</text>
+  <rect x="1960" y="924" width="416" height="52" rx="12" fill="#fff0f0"/><text x="2168" y="957" class="ui label" fill="#c95656" text-anchor="middle">Trash image</text>
+  <text x="1962" y="1258" class="ui tiny muted">Private · local-first · macOS native</text>
+</svg>
