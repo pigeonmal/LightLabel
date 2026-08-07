@@ -4,9 +4,33 @@ LightLabel is a native macOS application for preparing object-detection and inst
 
 The repository contains the complete format-independent domain model, geometry transforms, YOLO and COCO format code, dataset validation, atomic JSON persistence, bounded image loading, Core ML/Vision inference adapters, and a native three-column annotation interface.
 
-![LightLabel workspace preview](docs/images/lightlabel-preview.png)
+## Screenshots
 
-*LightLabel's native workspace with dataset navigation, editable annotations, and SAM2 Smart Polygon masks.*
+These screenshots are from the current native macOS app build.
+
+### Workspace
+
+![LightLabel workspace view](docs/images/lightlabel-workspace.png)
+
+*Annotate images with bounding boxes and polygons while browsing the dataset sidebar and inspector.*
+
+### Grid
+
+![LightLabel grid view](docs/images/lightlabel-grid.png)
+
+*Browse thumbnails, split badges, and annotation counts at a glance.*
+
+### List
+
+![LightLabel list view](docs/images/lightlabel-list.png)
+
+*Use Finder-style columns for filename, dimensions, split, and label counts.*
+
+### Welcome screen
+
+![LightLabel welcome screen](docs/images/lightlabel-welcome.png)
+
+*Create, open, or import a local dataset from the welcome screen.*
 
 ## Download
 
