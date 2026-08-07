@@ -62,6 +62,7 @@ struct DatasetList: View {
     @State private var sortOrder = [KeyPathComparator<DatasetListRow>(\.fileName)]
     @State private var tableRows: [DatasetListRow] = []
     @State private var sortingTask: Task<Void, Never>?
+    @State private var sortGeneration = 0
 
     var body: some View {
         Table(tableRows, selection: Binding<Set<UUID>>(get: { model.selectedImageIDs }, set: { ids in model.selectImages(ids) }), sortOrder: tableSortOrder) {
@@ -116,6 +117,7 @@ struct DatasetList: View {
         Binding(
             get: { sortOrder },
             set: { newOrder in
+                guard !Self.sameSortOrder(newOrder, sortOrder) else { return }
                 sortOrder = newOrder
                 scheduleSort(Self.sortDescriptor(for: newOrder))
             }
@@ -128,9 +130,16 @@ struct DatasetList: View {
     }
 
     private func scheduleSort(_ descriptor: DatasetListSortDescriptor, rows: [DatasetListRow]? = nil) {
+        sortGeneration &+= 1
+        let generation = sortGeneration
         sortingTask?.cancel()
+        let previousTask = sortingTask
         let input = rows ?? tableRows
         sortingTask = Task { @MainActor in
+            // Do not let cancelled sorts overlap. Large tables can otherwise
+            // retain multiple full row buffers while SwiftUI is diffing them.
+            await previousTask?.value
+            guard generation == sortGeneration, !Task.isCancelled else { return }
             let worker = Task.detached(priority: .userInitiated) {
                 try await input.sorted(using: descriptor)
             }
@@ -140,7 +149,7 @@ struct DatasetList: View {
                 } onCancel: {
                     worker.cancel()
                 }
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, generation == sortGeneration else { return }
                 tableRows = sorted
             } catch is CancellationError {
                 // A newer filter or sort request superseded this work.
@@ -148,6 +157,13 @@ struct DatasetList: View {
                 // Sorting is an in-memory operation; a failed/cancelled sort
                 // should never take down the browser.
             }
+        }
+    }
+
+    private static func sameSortOrder(_ lhs: [KeyPathComparator<DatasetListRow>], _ rhs: [KeyPathComparator<DatasetListRow>]) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        return zip(lhs, rhs).allSatisfy { left, right in
+            left.keyPath == right.keyPath && left.order == right.order
         }
     }
 

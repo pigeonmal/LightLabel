@@ -150,7 +150,12 @@ private actor SAM2SegmentationService {
 
     func segment(image: CGImage, at point: NormalizedPoint) async throws -> Polygon {
         if session == nil {
-            session = try Sam2Session(modelName: "SAM2Tiny", config: .bestAvailable)
+            // SAMKit's `.bestAvailable` enables the Metal GPU path. On some
+            // macOS/Apple GPU + FP16 combinations MPSGraph aborts the process
+            // instead of returning an error. The Neural Engine path keeps SAM
+            // responsive while avoiding that uncatchable driver failure.
+            let config = RuntimeConfig(computeUnits: .neuralEnginePreferred, enableFP16: true)
+            session = try Sam2Session(modelName: "SAM2Tiny", config: config)
         }
 
         let imageKey = "\(ObjectIdentifier(image as AnyObject)):\(image.width)x\(image.height)"
