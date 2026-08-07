@@ -94,6 +94,27 @@ public struct DatasetCategory: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+public struct DatasetTag: Codable, Hashable, Sendable, Identifiable {
+    public var id: UUID
+    public var name: String
+    public var colorHex: String
+
+    public init(id: UUID = UUID(), name: String, colorHex: String = "#8E8E93") {
+        self.id = id
+        self.name = name
+        self.colorHex = colorHex
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, colorHex }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? "#8E8E93"
+    }
+}
+
 public struct DatasetImage: Codable, Hashable, Sendable, Identifiable {
     public var id: UUID
     public var fileName: String
@@ -102,6 +123,7 @@ public struct DatasetImage: Codable, Hashable, Sendable, Identifiable {
     public var size: PixelSize
     public var split: DatasetSplit
     public var sourceID: Int?
+    public var tagIDs: [UUID]
     public var metadata: [String: String]
 
     public init(
@@ -111,6 +133,7 @@ public struct DatasetImage: Codable, Hashable, Sendable, Identifiable {
         size: PixelSize,
         split: DatasetSplit = .unassigned,
         sourceID: Int? = nil,
+        tagIDs: [UUID] = [],
         metadata: [String: String] = [:]
     ) {
         self.id = id
@@ -119,10 +142,11 @@ public struct DatasetImage: Codable, Hashable, Sendable, Identifiable {
         self.size = size
         self.split = split
         self.sourceID = sourceID
+        self.tagIDs = tagIDs
         self.metadata = metadata
     }
 
-    private enum CodingKeys: String, CodingKey { case id, fileName, relativePath, size, split, sourceID, metadata }
+    private enum CodingKeys: String, CodingKey { case id, fileName, relativePath, size, split, sourceID, tagIDs, metadata }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -132,6 +156,7 @@ public struct DatasetImage: Codable, Hashable, Sendable, Identifiable {
         size = try container.decode(PixelSize.self, forKey: .size)
         split = try container.decodeIfPresent(DatasetSplit.self, forKey: .split) ?? .unassigned
         sourceID = try container.decodeIfPresent(Int.self, forKey: .sourceID)
+        tagIDs = try container.decodeIfPresent([UUID].self, forKey: .tagIDs) ?? []
         metadata = try container.decodeIfPresent([String: String].self, forKey: .metadata) ?? [:]
     }
 }
@@ -190,6 +215,7 @@ public struct AnnotationDataset: Codable, Hashable, Sendable, Identifiable {
     public var name: String
     public var images: [DatasetImage]
     public var categories: [DatasetCategory]
+    public var tags: [DatasetTag]
     public var annotations: [DatasetAnnotation]
     public var metadata: [String: String]
     public var createdAt: Date
@@ -200,6 +226,7 @@ public struct AnnotationDataset: Codable, Hashable, Sendable, Identifiable {
         name: String,
         images: [DatasetImage] = [],
         categories: [DatasetCategory] = [],
+        tags: [DatasetTag] = [],
         annotations: [DatasetAnnotation] = [],
         metadata: [String: String] = [:],
         createdAt: Date = Date(),
@@ -209,6 +236,7 @@ public struct AnnotationDataset: Codable, Hashable, Sendable, Identifiable {
         self.name = name
         self.images = images
         self.categories = categories
+        self.tags = tags
         self.annotations = annotations
         self.metadata = metadata
         self.createdAt = Self.wholeSecond(createdAt)
@@ -217,6 +245,29 @@ public struct AnnotationDataset: Codable, Hashable, Sendable, Identifiable {
 
     public func annotations(for imageID: UUID) -> [DatasetAnnotation] {
         annotations.filter { $0.imageID == imageID }
+    }
+
+    public func tags(for imageID: UUID) -> [DatasetTag] {
+        guard let image = images.first(where: { $0.id == imageID }) else { return [] }
+        let tagsByID = Dictionary(uniqueKeysWithValues: tags.map { ($0.id, $0) })
+        return image.tagIDs.compactMap { tagsByID[$0] }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, images, categories, tags, annotations, metadata, createdAt, modifiedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        images = try container.decodeIfPresent([DatasetImage].self, forKey: .images) ?? []
+        categories = try container.decodeIfPresent([DatasetCategory].self, forKey: .categories) ?? []
+        tags = try container.decodeIfPresent([DatasetTag].self, forKey: .tags) ?? []
+        annotations = try container.decodeIfPresent([DatasetAnnotation].self, forKey: .annotations) ?? []
+        metadata = try container.decodeIfPresent([String: String].self, forKey: .metadata) ?? [:]
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        modifiedAt = try container.decodeIfPresent(Date.self, forKey: .modifiedAt) ?? createdAt
     }
 
     private static func wholeSecond(_ date: Date) -> Date {

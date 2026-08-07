@@ -58,6 +58,7 @@ struct DatasetList: View {
                         Button(split == .unassigned ? "Unassigned" : split.yoloName.capitalized) { model.setSplit(split, for: ids) }
                     }
                 }
+                ImageTagMenu(model: model, imageIDs: ids)
                 Divider()
                 Button("Trash \(ids.count == 1 ? "Image" : "Images")", role: .destructive) { model.deleteImages(ids: ids) }
             }
@@ -221,6 +222,7 @@ private struct ImageCard: View {
                     Button(split == .unassigned ? "Unassigned" : split.yoloName.capitalized) { model.setSplit(split, for: selectedImageIDsForContext) }
                 }
             }
+            ImageTagMenu(model: model, imageIDs: selectedImageIDsForContext)
             Divider()
             Button("Trash \(selectedImageIDsForContext.count == 1 ? "Image" : "Images")", role: .destructive) { model.deleteImages(ids: selectedImageIDsForContext) }
         }
@@ -235,6 +237,81 @@ private struct ImageCard: View {
         model.selectedImageIDs.contains(image.id) ? model.selectedImageIDs : [image.id]
     }
 
+}
+
+struct ImageTagMenu: View {
+    let model: AppModel
+    let imageIDs: Set<UUID>
+    @State private var editor: TagEditor?
+
+    var body: some View {
+        Menu("Tags", systemImage: "tag") {
+            if let tags = model.dataset?.tags, !tags.isEmpty {
+                ForEach(tags) { tag in
+                    Button {
+                        model.setTag(tag.id, enabled: !isFullyApplied(tag.id), for: imageIDs)
+                    } label: {
+                        Label(tag.name, systemImage: isFullyApplied(tag.id) ? "checkmark" : "tag")
+                    }
+                }
+                Divider()
+            }
+            Button("New Tag…") {
+                editor = .init(tagID: nil, name: "New Tag", color: .gray)
+            }
+        }
+        .sheet(item: $editor) { editor in
+            TagEditorSheet(editor: editor) { name, color in
+                model.addTag(name: name, colorHex: color.hexString, to: imageIDs)
+            }
+        }
+    }
+
+    private func isFullyApplied(_ tagID: UUID) -> Bool {
+        guard !imageIDs.isEmpty, let dataset = model.dataset else { return false }
+        return imageIDs.allSatisfy { imageID in
+            dataset.images.first(where: { $0.id == imageID })?.tagIDs.contains(tagID) == true
+        }
+    }
+}
+
+struct ImageTagChips: View {
+    let model: AppModel
+    let image: DatasetImage
+
+    var body: some View {
+        let tags = model.dataset?.tags.filter { image.tagIDs.contains($0.id) } ?? []
+        if tags.isEmpty {
+            Text("No tags")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            ScrollView(.horizontal) {
+                HStack(spacing: 5) {
+                    ForEach(tags) { tag in
+                        HStack(spacing: 4) {
+                            Circle().fill(Color(hex: tag.colorHex)).frame(width: 7, height: 7)
+                            Text(tag.name).lineLimit(1)
+                            Button {
+                                model.setTag(tag.id, enabled: false, for: [image.id])
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove tag \(tag.name)")
+                        }
+                        .font(.caption)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(Color(hex: tag.colorHex).opacity(0.14), in: Capsule())
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
 }
 
 struct ThumbnailView: View {

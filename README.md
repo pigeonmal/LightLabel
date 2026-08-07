@@ -53,6 +53,7 @@ The app runs locally and does not require an account or a cloud service. The app
 - Lazy ImageIO image and thumbnail decoding
 - Native SwiftUI browser, workspace, sidebar, inspector, menus, and shortcuts
 - Finder-style sorting, multi-selection, bulk split changes, and bulk Trash actions in grid/list views
+- Per-image tags with quick creation, multi-image assignment, filtering, and import provenance tags
 - SAM2 Tiny Smart Polygon clicks using on-device Core ML masks, with crop-first prompts for small objects
 - Smart splitting that groups visually similar images and balances class distribution across splits
 - New-dataset format selection with automatic YOLO or COCO synchronization
@@ -75,7 +76,8 @@ The expected project is `LightLabel.xcodeproj` with the `LightLabel` scheme.
 1. Download and unzip the latest arm64 release.
 2. Open `LightLabel.app` and choose **Create Dataset**, **Open Dataset**, or **Import Dataset**.
 3. Use **Workspace** for annotation, **Grid** for visual browsing, or **List** for Finder-style column sorting.
-4. Choose **Smart Polygon**, then click an object to generate an editable SAM2 mask polygon.
+4. Create tags from the sidebar, assign them from an image context menu or the workspace inspector, and filter the dataset by tag.
+5. Choose **Smart Polygon**, then click an object to generate an editable SAM2 mask polygon.
 
 ## Build
 

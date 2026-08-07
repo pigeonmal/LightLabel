@@ -191,6 +191,9 @@ struct LocalDatasetServices: DatasetApplicationServices {
         if Self.isDirectory(url) {
             return try await openDataset(at: url)
         }
+        if let projectRoot = Self.projectRoot(containing: url), let saved = try? await openDataset(at: projectRoot), !saved.images.isEmpty {
+            return saved
+        }
         if url.pathExtension.lowercased() == "json" {
             let (imported, imageRoot) = try Self.importCOCOFile(at: url)
             return imported
@@ -225,6 +228,21 @@ struct LocalDatasetServices: DatasetApplicationServices {
         }
 
         var result = dataset
+        var tagMap: [UUID: UUID] = [:]
+        for tag in imported.tags {
+            if let existing = result.tags.first(where: { $0.name.caseInsensitiveCompare(tag.name) == .orderedSame }) {
+                tagMap[tag.id] = existing.id
+            } else {
+                var copy = tag
+                copy.id = UUID()
+                result.tags.append(copy)
+                tagMap[tag.id] = copy.id
+            }
+        }
+        let provenanceTagID = Self.ensureTag(
+            named: Self.importProvenanceTagName(for: imported),
+            in: &result
+        )
         var categoryMap: [UUID: UUID] = [:]
         for category in imported.categories {
             if let existing = result.categories.first(where: { $0.name.caseInsensitiveCompare(category.name) == .orderedSame }) {
@@ -258,6 +276,8 @@ struct LocalDatasetServices: DatasetApplicationServices {
             copy.fileName = destination.lastPathComponent
             if targetIsYOLO, copy.split == .unassigned { copy.split = .train }
             copy.sourceID = nil
+            copy.tagIDs = image.tagIDs.compactMap { tagMap[$0] }
+            if !copy.tagIDs.contains(provenanceTagID) { copy.tagIDs.append(provenanceTagID) }
             result.images.append(copy)
             imageMap[image.id] = copy.id
         }
@@ -360,6 +380,18 @@ struct LocalDatasetServices: DatasetApplicationServices {
         (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
     }
 
+    private static func projectRoot(containing url: URL) -> URL? {
+        var current = isDirectory(url) ? url : url.deletingLastPathComponent()
+        for _ in 0..<8 {
+            let projectFile = current.appendingPathComponent(".lightlabel/dataset.json")
+            if FileManager.default.fileExists(atPath: projectFile.path) { return current }
+            let parent = current.deletingLastPathComponent()
+            if parent.path == current.path { break }
+            current = parent
+        }
+        return nil
+    }
+
     private static func cocoJSONFiles(in root: URL) -> [URL] {
         guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else { return [] }
         return enumerator.compactMap { item in
@@ -456,6 +488,26 @@ struct LocalDatasetServices: DatasetApplicationServices {
                   ["jpg", "jpeg", "png", "heic", "tif", "tiff", "bmp", "webp"].contains(file.pathExtension.lowercased()) else { return nil }
             return file
         }
+    }
+
+    private static func ensureTag(named name: String, in dataset: inout AnnotationDataset) -> UUID {
+        if let existing = dataset.tags.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+            return existing.id
+        }
+        let tag = DatasetTag(name: name)
+        dataset.tags.append(tag)
+        return tag.id
+    }
+
+    private static func importProvenanceTagName(for dataset: AnnotationDataset) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let components = calendar.dateComponents([.year, .month, .day], from: Date())
+        let date = String(format: "%04d-%02d-%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+        let base = dataset.name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-")
+        return "\(base.isEmpty ? "Dataset" : base)-\(date)"
     }
 
     private struct COCOProbe: Decodable {
@@ -585,6 +637,7 @@ final class AppModel {
     var tool = AnnotationTool.select
     var browserMode = BrowserMode.workspace
     var splitFilter = SplitFilter.all { didSet { invalidateFilteredImages() } }
+    var tagFilterID: UUID? { didSet { invalidateFilteredImages() } }
     var statusFilter = StatusFilter.all { didSet { invalidateFilteredImages() } }
     var searchText = "" { didSet { invalidateFilteredImages() } }
     var imageSortKey = ImageSortKey.name
@@ -613,6 +666,7 @@ final class AppModel {
     @ObservationIgnored private var annotationsByImageID: [UUID: [DatasetAnnotation]] = [:]
     @ObservationIgnored private var annotationCountsByCategoryID: [UUID: Int] = [:]
     @ObservationIgnored private var categoryNamesByID: [UUID: String] = [:]
+    @ObservationIgnored private var tagNamesByID: [UUID: String] = [:]
     @ObservationIgnored private var filterRevision = 0
     @ObservationIgnored private var cachedFilterRevision = -1
     @ObservationIgnored private var cachedFilteredImages: [DatasetImage] = []
@@ -647,6 +701,7 @@ final class AppModel {
             return []
         }
         let query = searchText
+        let tagFilterID = self.tagFilterID
         let includedCategoryIDs = self.includedCategoryIDs
         let excludedCategoryIDs = self.excludedCategoryIDs
         let result = dataset.images.filter { image in
@@ -659,6 +714,8 @@ final class AppModel {
             }
             guard splitMatches else { return false }
 
+            if let tagFilterID, !image.tagIDs.contains(tagFilterID) { return false }
+
             let imageAnnotations = annotationsByImageID[image.id] ?? []
             let statusMatches: Bool = switch statusFilter {
             case .all: true
@@ -670,6 +727,7 @@ final class AppModel {
 
             let queryMatches = query.isEmpty
                 || image.fileName.localizedCaseInsensitiveContains(query)
+                || image.tagIDs.contains { tagNamesByID[$0]?.localizedCaseInsensitiveContains(query) == true }
                 || imageAnnotations.contains { annotation in
                     categoryNamesByID[annotation.categoryID]?.localizedCaseInsensitiveContains(query) == true
                 }
@@ -1203,6 +1261,86 @@ final class AppModel {
         excludedCategoryIDs.removeAll()
     }
 
+    func tagCount(_ id: UUID) -> Int {
+        dataset?.images.count(where: { $0.tagIDs.contains(id) }) ?? 0
+    }
+
+    @discardableResult
+    func addTag(name: String, colorHex: String = "#8E8E93", to imageIDs: Set<UUID> = []) -> UUID? {
+        guard var dataset else { return nil }
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedName.isEmpty else { return nil }
+
+        let tagID: UUID
+        var changed = false
+        if let existing = dataset.tags.first(where: { $0.name.caseInsensitiveCompare(normalizedName) == .orderedSame }) {
+            tagID = existing.id
+        } else {
+            let tag = DatasetTag(name: normalizedName, colorHex: colorHex)
+            dataset.tags.append(tag)
+            tagID = tag.id
+            changed = true
+        }
+
+        for index in dataset.images.indices where imageIDs.contains(dataset.images[index].id) {
+            if !dataset.images[index].tagIDs.contains(tagID) {
+                dataset.images[index].tagIDs.append(tagID)
+                changed = true
+            }
+        }
+        guard changed else { return tagID }
+        self.dataset = dataset
+        markDirty()
+        return tagID
+    }
+
+    func setTag(_ tagID: UUID, enabled: Bool, for imageIDs: Set<UUID>) {
+        guard var dataset, !imageIDs.isEmpty, dataset.tags.contains(where: { $0.id == tagID }) else { return }
+        var changed = false
+        for index in dataset.images.indices where imageIDs.contains(dataset.images[index].id) {
+            if enabled {
+                if !dataset.images[index].tagIDs.contains(tagID) {
+                    dataset.images[index].tagIDs.append(tagID)
+                    changed = true
+                }
+            } else if dataset.images[index].tagIDs.contains(tagID) {
+                dataset.images[index].tagIDs.removeAll { $0 == tagID }
+                changed = true
+            }
+        }
+        guard changed else { return }
+        self.dataset = dataset
+        markDirty()
+    }
+
+    func updateTag(id: UUID, name: String? = nil, colorHex: String? = nil) {
+        guard var dataset, let index = dataset.tags.firstIndex(where: { $0.id == id }) else { return }
+        if let name {
+            let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalizedName.isEmpty,
+                  !dataset.tags.contains(where: { $0.id != id && $0.name.caseInsensitiveCompare(normalizedName) == .orderedSame }) else { return }
+            dataset.tags[index].name = normalizedName
+        }
+        if let colorHex { dataset.tags[index].colorHex = colorHex }
+        self.dataset = dataset
+        markDirty()
+    }
+
+    func deleteTag(id: UUID) {
+        guard var dataset, dataset.tags.contains(where: { $0.id == id }) else { return }
+        dataset.tags.removeAll { $0.id == id }
+        for index in dataset.images.indices {
+            dataset.images[index].tagIDs.removeAll { $0 == id }
+        }
+        self.dataset = dataset
+        if tagFilterID == id { tagFilterID = nil }
+        markDirty()
+    }
+
+    func clearTagFilter() {
+        tagFilterID = nil
+    }
+
     func loadModel() {
         let panel = NSOpenPanel()
         panel.title = "Load Core ML Model"
@@ -1239,6 +1377,7 @@ final class AppModel {
         selectedAnnotationID = nil
         includedCategoryIDs.removeAll()
         excludedCategoryIDs.removeAll()
+        tagFilterID = nil
         isDirty = false
         validation = ValidationSummary()
         fitImage()
@@ -1266,6 +1405,7 @@ final class AppModel {
             annotationsByImageID = [:]
             annotationCountsByCategoryID = [:]
             categoryNamesByID = [:]
+            tagNamesByID = [:]
             return
         }
         imagesByID = Dictionary(uniqueKeysWithValues: dataset.images.map { ($0.id, $0) })
@@ -1273,6 +1413,7 @@ final class AppModel {
         annotationsByImageID = Dictionary(grouping: dataset.annotations, by: \.imageID)
         annotationCountsByCategoryID = dataset.annotations.reduce(into: [:]) { $0[$1.categoryID, default: 0] += 1 }
         categoryNamesByID = Dictionary(uniqueKeysWithValues: dataset.categories.map { ($0.id, $0.name) })
+        tagNamesByID = Dictionary(uniqueKeysWithValues: dataset.tags.map { ($0.id, $0.name) })
     }
 
     private func invalidateFilteredImages() {

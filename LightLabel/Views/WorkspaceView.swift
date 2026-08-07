@@ -81,6 +81,8 @@ struct AnnotationInspector: View {
                             Text(split == .unassigned ? "Unassigned" : split.yoloName.capitalized).tag(split)
                         }
                     }
+                    ImageTagChips(model: model, image: image)
+                    ImageTagMenu(model: model, imageIDs: [image.id])
                     Button("Show in Finder", systemImage: "folder") {
                         if let url = model.imageURL(for: image) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                     }

@@ -95,6 +95,17 @@ final class StableIDValidatorPersistenceTests: XCTestCase {
         XCTAssertTrue(json.contains("2023-11-14T22:13:20Z"))
     }
 
+    func testLegacyDatasetWithoutTagsDecodesWithEmptyTags() throws {
+        let id = UUID()
+        let data = try XCTUnwrap("{\"id\":\"\(id.uuidString)\",\"name\":\"Legacy\"}".data(using: .utf8))
+        let decoded = try JSONDecoder().decode(AnnotationDataset.self, from: data)
+
+        XCTAssertEqual(decoded.id, id)
+        XCTAssertEqual(decoded.name, "Legacy")
+        XCTAssertTrue(decoded.tags.isEmpty)
+        XCTAssertTrue(decoded.images.isEmpty)
+    }
+
     func testScheduledSavePersistsLatestSnapshot() async throws {
         let directory = try TestSupport.makeTemporaryDirectory()
         defer { TestSupport.removeTemporaryDirectory(directory) }
@@ -172,5 +183,48 @@ final class StableIDValidatorPersistenceTests: XCTestCase {
         let image = try XCTUnwrap(merged.images.first)
         XCTAssertEqual(image.relativePath, "images/imported/frame.png")
         XCTAssertTrue(FileManager.default.fileExists(atPath: target.appendingPathComponent(image.relativePath).path))
+    }
+
+    func testMergePreservesSourceTagsAndAddsDatasetDateProvenanceTag() async throws {
+        let directory = try TestSupport.makeTemporaryDirectory()
+        defer { TestSupport.removeTemporaryDirectory(directory) }
+        let source = directory.appendingPathComponent("source", isDirectory: true)
+        let target = directory.appendingPathComponent("target", isDirectory: true)
+        let sourceImages = source.appendingPathComponent("images/train", isDirectory: true)
+        let sourceLabels = source.appendingPathComponent("labels/train", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceImages, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sourceLabels, withIntermediateDirectories: true)
+        try "path: .\ntrain: images/train\nval: images/val\nnames: [bird]\n".write(to: source.appendingPathComponent("data.yaml"), atomically: true, encoding: .utf8)
+        try TestSupport.writeTinyPNG(to: sourceImages.appendingPathComponent("bird.png"))
+        try "0 0.5 0.5 0.5 0.5\n".write(to: sourceLabels.appendingPathComponent("bird.txt"), atomically: true, encoding: .utf8)
+
+        let services = LocalDatasetServices()
+        let createdSource = try await services.createDataset(named: "Source Dataset", at: source, syncFormat: .yoloDetection)
+        let sourceTag = DatasetTag(name: "reviewed", colorHex: "#00AA00")
+        let sourceImage = DatasetImage(
+            fileName: "bird.png",
+            relativePath: "images/train/bird.png",
+            size: .init(width: 1, height: 1),
+            split: .train,
+            tagIDs: [sourceTag.id]
+        )
+        let taggedSource = AnnotationDataset(
+            id: createdSource.id,
+            name: "Source Dataset",
+            images: [sourceImage],
+            categories: createdSource.categories,
+            tags: [sourceTag],
+            metadata: createdSource.metadata
+        )
+        try await ProjectPersistence(directoryURL: source.appendingPathComponent(".lightlabel")).save(taggedSource)
+
+        let targetDataset = try await services.createDataset(named: "Target", at: target, syncFormat: .yoloDetection)
+        let merged = try await services.mergeDataset(from: source.appendingPathComponent("data.yaml"), into: targetDataset)
+
+        let image = try XCTUnwrap(merged.images.first)
+        let imageTagNames = image.tagIDs.compactMap { id in merged.tags.first(where: { $0.id == id })?.name }
+        XCTAssertTrue(imageTagNames.contains("reviewed"))
+        XCTAssertTrue(imageTagNames.contains { $0.hasPrefix("Source Dataset-") && $0.count == "Source Dataset-YYYY-MM-DD".count })
+        XCTAssertEqual(merged.tags.count, 2)
     }
 }

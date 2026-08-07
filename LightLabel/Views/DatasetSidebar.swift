@@ -4,6 +4,7 @@ import SwiftUI
 struct DatasetSidebar: View {
     @Bindable var model: AppModel
     @State private var categoryEditor: CategoryEditor?
+    @State private var tagEditor: TagEditor?
     @State private var showSmartSplit = false
 
     var body: some View {
@@ -11,7 +12,7 @@ struct DatasetSidebar: View {
             if let dataset = model.dataset {
                 List {
                     Section {
-                        TextField("Search filenames and classes", text: $model.searchText)
+                        TextField("Search filenames, classes, and tags", text: $model.searchText)
                             .textFieldStyle(.roundedBorder)
                             .accessibilityLabel("Search dataset")
                     }
@@ -22,6 +23,63 @@ struct DatasetSidebar: View {
                         }
                         .pickerStyle(.menu)
                         .labelsHidden()
+                    }
+
+                    Section {
+                        Button {
+                            model.clearTagFilter()
+                        } label: {
+                            HStack {
+                                Label("All tags", systemImage: "tag")
+                                Spacer()
+                                if model.tagFilterID == nil { Image(systemName: "checkmark") }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        if dataset.tags.isEmpty {
+                            Text("No tags yet")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(dataset.tags) { tag in
+                                Button {
+                                    model.tagFilterID = tag.id
+                                } label: {
+                                    HStack {
+                                        Circle().fill(Color(hex: tag.colorHex)).frame(width: 10, height: 10)
+                                        Text(tag.name).lineLimit(1)
+                                        Spacer()
+                                        Text(model.tagCount(tag.id), format: .number)
+                                            .foregroundStyle(.secondary)
+                                            .monospacedDigit()
+                                        if model.tagFilterID == tag.id { Image(systemName: "checkmark").foregroundStyle(.tint) }
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button("Edit…") { tagEditor = .init(tagID: tag.id, name: tag.name, color: Color(hex: tag.colorHex)) }
+                                    Divider()
+                                    Button("Delete Tag", role: .destructive) { model.deleteTag(id: tag.id) }
+                                }
+                            }
+                        }
+                    } header: {
+                        HStack {
+                            Text("Tags")
+                            Spacer()
+                            if model.tagFilterID != nil {
+                                Button { model.clearTagFilter() } label: { Image(systemName: "xmark.circle") }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityLabel("Clear tag filter")
+                            }
+                            Button { tagEditor = .init(tagID: nil, name: "New Tag", color: Color.gray) } label: { Image(systemName: "plus") }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Add tag")
+                        }
                     }
 
                     Section("Status") {
@@ -167,6 +225,13 @@ struct DatasetSidebar: View {
                 if let id = editor.categoryID { model.updateCategory(id: id, name: name, colorHex: hex) } else { model.addCategory(name: name, colorHex: hex) }
             }
         }
+        .sheet(item: $tagEditor) { editor in
+            TagEditorSheet(editor: editor) { name, color in
+                let hex = color.hexString
+                if let id = editor.tagID { model.updateTag(id: id, name: name, colorHex: hex) }
+                else { model.addTag(name: name, colorHex: hex) }
+            }
+        }
         .sheet(isPresented: $showSmartSplit) {
             SmartSplitSheet(model: model)
         }
@@ -233,6 +298,46 @@ private struct CategoryEditor: Identifiable {
     var categoryID: UUID?
     var name: String
     var color: Color
+}
+
+struct TagEditor: Identifiable {
+    let id = UUID()
+    var tagID: UUID?
+    var name: String
+    var color: Color
+}
+
+struct TagEditorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let editor: TagEditor
+    let save: (String, Color) -> Void
+    @State private var name: String
+    @State private var color: Color
+
+    init(editor: TagEditor, save: @escaping (String, Color) -> Void) {
+        self.editor = editor
+        self.save = save
+        _name = State(initialValue: editor.name)
+        _color = State(initialValue: editor.color)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(editor.tagID == nil ? "Add Tag" : "Edit Tag")
+                .font(.title2.weight(.semibold))
+            TextField("Tag name", text: $name)
+            ColorPicker("Color", selection: $color, supportsOpacity: false)
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Save") { save(name, color); dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 360)
+    }
 }
 
 private struct CategoryEditorSheet: View {
