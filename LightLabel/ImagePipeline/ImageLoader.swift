@@ -63,6 +63,11 @@ public actor ImageLoader {
         }
     }
 
+    public func clearCache() {
+        cache.removeAllObjects()
+        inFlight.removeAll()
+    }
+
     private func loadThumbnail(at url: URL, maximumPixelSize: Int, appliesOrientation: Bool) async throws -> CGImage {
         try await acquire()
         defer { release() }

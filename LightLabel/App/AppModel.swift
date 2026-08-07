@@ -674,6 +674,7 @@ final class AppModel {
     @ObservationIgnored private var cachedBrowserSortKey = ImageSortKey.name
     @ObservationIgnored private var cachedBrowserSortAscending = true
     @ObservationIgnored private var cachedBrowserImages: [DatasetImage] = []
+    @ObservationIgnored private var fileNameSortKeyByID: [UUID: String] = [:]
     @ObservationIgnored private var selectionAnchorImageID: UUID?
 
     init(services: any DatasetApplicationServices = LocalDatasetServices()) {
@@ -752,7 +753,10 @@ final class AppModel {
         let result = filteredImages.sorted { lhs, rhs in
             let comparison: ComparisonResult
             switch imageSortKey {
-            case .name: comparison = lhs.fileName.localizedStandardCompare(rhs.fileName)
+            case .name:
+                let left = fileNameSortKeyByID[lhs.id] ?? Self.foldedSortKey(lhs.fileName)
+                let right = fileNameSortKeyByID[rhs.id] ?? Self.foldedSortKey(rhs.fileName)
+                comparison = (left as NSString).compare(right, options: .numeric)
             case .size:
                 let left = Int64(lhs.size.width) * Int64(lhs.size.height)
                 let right = Int64(rhs.size.width) * Int64(rhs.size.height)
@@ -1265,6 +1269,13 @@ final class AppModel {
         dataset?.images.count(where: { $0.tagIDs.contains(id) }) ?? 0
     }
 
+    /// Precomputed, locale-aware sort key for Finder-style filename sorting.
+    /// Folding once per image keeps name sorts off the main thread fast and
+    /// avoids re-folding every string on every comparison.
+    nonisolated static func foldedSortKey(_ fileName: String) -> String {
+        fileName.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
+    }
+
     @discardableResult
     func addTag(name: String, colorHex: String = "#8E8E93", to imageIDs: Set<UUID> = []) -> UUID? {
         guard var dataset else { return nil }
@@ -1369,7 +1380,14 @@ final class AppModel {
     }
 
     private func replaceDataset(_ dataset: AnnotationDataset) {
+        let previousRoot = self.dataset?.rootURL?.standardizedFileURL.path
         self.dataset = dataset
+        if dataset.rootURL?.standardizedFileURL.path != previousRoot {
+            // A different dataset was opened: drop decoded thumbnails so the
+            // previous dataset's pixels don't keep consuming RAM.
+            Task { await ImageLoader.shared.clearCache() }
+            Task { await ThumbnailStore.shared.removeAll() }
+        }
         selectedImageID = dataset.images.first?.id
         selectedImageIDs = dataset.images.first.map { [$0.id] } ?? []
         selectionAnchorImageID = selectedImageID
@@ -1406,6 +1424,7 @@ final class AppModel {
             annotationCountsByCategoryID = [:]
             categoryNamesByID = [:]
             tagNamesByID = [:]
+            fileNameSortKeyByID = [:]
             return
         }
         imagesByID = Dictionary(uniqueKeysWithValues: dataset.images.map { ($0.id, $0) })
@@ -1414,6 +1433,7 @@ final class AppModel {
         annotationCountsByCategoryID = dataset.annotations.reduce(into: [:]) { $0[$1.categoryID, default: 0] += 1 }
         categoryNamesByID = Dictionary(uniqueKeysWithValues: dataset.categories.map { ($0.id, $0.name) })
         tagNamesByID = Dictionary(uniqueKeysWithValues: dataset.tags.map { ($0.id, $0.name) })
+        fileNameSortKeyByID = Dictionary(uniqueKeysWithValues: dataset.images.map { ($0.id, Self.foldedSortKey($0.fileName)) })
     }
 
     private func invalidateFilteredImages() {
