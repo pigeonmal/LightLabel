@@ -81,4 +81,23 @@ final class COCOFormatTests: XCTestCase {
         let roundTrip = try COCOImporter().importDataset(at: output)
         XCTAssertEqual(roundTrip.dataset.annotations.first?.geometry, .polygon(polygon))
     }
+
+    func testImportResolvesCOCOJSONNestedUnderSplitFolder() throws {
+        let directory = try TestSupport.makeTemporaryDirectory()
+        defer { TestSupport.removeTemporaryDirectory(directory) }
+        let imageDirectory = directory.appendingPathComponent("images/train", isDirectory: true)
+        let annotationDirectory = directory.appendingPathComponent("annotations/train", isDirectory: true)
+        try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: annotationDirectory, withIntermediateDirectories: true)
+        try TestSupport.writeTinyPNG(to: imageDirectory.appendingPathComponent("frame.png"))
+        let json = """
+        {"images":[{"id":1,"file_name":"frame.png","width":1,"height":1}],"annotations":[],"categories":[]}
+        """
+        try json.write(to: annotationDirectory.appendingPathComponent("instances.json"), atomically: true, encoding: .utf8)
+
+        let result = try COCOImporter().importDataset(at: annotationDirectory.appendingPathComponent("instances.json"), imageRoot: directory)
+
+        XCTAssertEqual(result.dataset.images.first?.relativePath, "images/train/frame.png")
+        XCTAssertEqual(result.dataset.images.first?.split, .train)
+    }
 }

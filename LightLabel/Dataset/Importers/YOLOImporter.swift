@@ -10,10 +10,12 @@ public enum YOLOTask: String, Codable, Sendable {
 public struct YOLODataConfiguration: Hashable, Sendable {
     public var names: [String]
     public var paths: [DatasetSplit: String]
+    public var basePath: String?
 
-    public init(names: [String], paths: [DatasetSplit: String] = [:]) {
+    public init(names: [String], paths: [DatasetSplit: String] = [:], basePath: String? = nil) {
         self.names = names
         self.paths = paths
+        self.basePath = basePath
     }
 
     public static func parse(_ text: String) throws -> Self {
@@ -21,7 +23,9 @@ public struct YOLODataConfiguration: Hashable, Sendable {
         var paths: [DatasetSplit: String] = [:]
         var indexedNames: [Int: String] = [:]
         var listNames: [String] = []
+        var basePath: String?
         var inNamesBlock = false
+        var sawNamesKey = false
 
         for rawLine in lines {
             let indentation = rawLine.prefix { $0 == " " || $0 == "\t" }.count
@@ -40,6 +44,7 @@ public struct YOLODataConfiguration: Hashable, Sendable {
             let key = String(line[..<colon]).trimmingCharacters(in: .whitespaces)
             let value = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
             if key == "names" {
+                sawNamesKey = true
                 if value.isEmpty {
                     inNamesBlock = true
                 } else if value.first == "[", value.last == "]" {
@@ -47,14 +52,16 @@ public struct YOLODataConfiguration: Hashable, Sendable {
                         unquote($0.trimmingCharacters(in: .whitespaces))
                     }
                 }
+            } else if key == "path" {
+                basePath = unquote(value)
             } else {
                 let split = DatasetSplit(yoloName: key)
                 if split != .unassigned { paths[split] = unquote(value) }
             }
         }
         let names = listNames.isEmpty ? indexedNames.sorted { $0.key < $1.key }.map(\.value) : listNames
-        guard !names.isEmpty else { throw DatasetFormatError.invalidData("data.yaml has no parseable names") }
-        return .init(names: names, paths: paths)
+        guard sawNamesKey else { throw DatasetFormatError.invalidData("data.yaml has no parseable names") }
+        return .init(names: names, paths: paths, basePath: basePath)
     }
 
     private static func unquote(_ value: String) -> String {
@@ -88,7 +95,7 @@ public struct YOLOImporter: Sendable {
         var warnings: [DatasetFormatWarning] = []
 
         for split in [DatasetSplit.train, .validation, .test, .unassigned] {
-            let imageDirectory = resolveImageDirectory(root: rootURL, configuredPath: configuration.paths[split], split: split)
+            let imageDirectory = resolveImageDirectory(root: rootURL, configuredPath: configuration.paths[split], basePath: configuration.basePath, split: split)
             guard let imageDirectory, fileManager.fileExists(atPath: imageDirectory.path) else { continue }
             let files = (try? fileManager.contentsOfDirectory(
                 at: imageDirectory,
@@ -100,7 +107,7 @@ public struct YOLOImporter: Sendable {
                     warnings.append(.init("Could not read image dimensions", file: imageURL.path))
                     continue
                 }
-                let relativePath = imageURL.path.replacingOccurrences(of: rootURL.path + "/", with: "")
+                let relativePath = Self.relativePath(imageURL, from: rootURL)
                 let imageID = StableID.make(namespace: "yolo-image", components: [relativePath])
                 images.append(.init(id: imageID, fileName: imageURL.lastPathComponent, relativePath: relativePath, size: size, split: split))
                 let labelURL = resolveLabelURL(for: imageURL, root: rootURL, split: split)
@@ -154,14 +161,40 @@ public struct YOLOImporter: Sendable {
         return (output, warnings)
     }
 
-    private func resolveImageDirectory(root: URL, configuredPath: String?, split: DatasetSplit) -> URL? {
+    private func resolveImageDirectory(root: URL, configuredPath: String?, basePath: String?, split: DatasetSplit) -> URL? {
         if let configuredPath, !configuredPath.isEmpty {
             let path = configuredPath.replacingOccurrences(of: "\\", with: "/")
-            return path.hasPrefix("/") ? URL(fileURLWithPath: path) : root.appendingPathComponent(path)
+            var candidates: [URL] = []
+            if path.hasPrefix("/") {
+                candidates.append(URL(fileURLWithPath: path))
+            } else {
+                if let basePath, !basePath.isEmpty {
+                    let base = basePath.replacingOccurrences(of: "\\", with: "/")
+                    candidates.append(root.appendingPathComponent(base).appendingPathComponent(path))
+                }
+                candidates.append(root.appendingPathComponent(path))
+                let cleaned = path.split(separator: "/").filter { $0 != ".." && $0 != "." }.joined(separator: "/")
+                if cleaned != path { candidates.append(root.appendingPathComponent(cleaned)) }
+            }
+            candidates.append(contentsOf: splitDirectoryCandidates(root: root, split: split))
+            return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
         }
         if split == .unassigned { return root.appendingPathComponent("images") }
-        let candidates = [root.appendingPathComponent("images/\(split.yoloName)"), root.appendingPathComponent(split.yoloName + "/images")]
+        let candidates = splitDirectoryCandidates(root: root, split: split)
         return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    private func splitDirectoryCandidates(root: URL, split: DatasetSplit) -> [URL] {
+        let names: [String]
+        switch split {
+        case .train: names = ["train"]
+        case .validation: names = ["val", "valid", "validation"]
+        case .test: names = ["test"]
+        case .unassigned: names = []
+        }
+        return names.flatMap { name in
+            [root.appendingPathComponent("images/\(name)"), root.appendingPathComponent("\(name)/images")]
+        }
     }
 
     private func resolveLabelURL(for image: URL, root: URL, split: DatasetSplit) -> URL {
@@ -179,6 +212,14 @@ public struct YOLOImporter: Sendable {
     }
 
     private static let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "tif", "tiff", "bmp", "webp"]
+
+    private static func relativePath(_ file: URL, from root: URL) -> String {
+        let resolvedRoot = root.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        let resolvedFile = file.resolvingSymlinksInPath().standardizedFileURL.pathComponents
+        guard resolvedFile.starts(with: resolvedRoot) else { return file.resolvingSymlinksInPath().standardizedFileURL.path }
+        return resolvedFile.dropFirst(resolvedRoot.count).joined(separator: "/")
+    }
+
     private static func imageSize(at url: URL) -> PixelSize? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],

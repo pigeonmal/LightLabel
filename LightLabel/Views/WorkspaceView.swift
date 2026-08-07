@@ -2,7 +2,6 @@ import SwiftUI
 
 struct AnnotationWorkspace: View {
     @Bindable var model: AppModel
-    @State private var confirmDeleteImage = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,7 +20,6 @@ struct AnnotationWorkspace: View {
                 Button { model.fitImage() } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }.help("Fit image")
                 Button { model.actualSize() } label: { Text("1:1").font(.caption.monospaced()) }.help("Actual size")
                 Divider().frame(height: 18)
-                Button(role: .destructive) { confirmDeleteImage = true } label: { Image(systemName: "trash") }.help("Delete image from dataset")
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, 14).padding(.vertical, 9)
@@ -35,17 +33,6 @@ struct AnnotationWorkspace: View {
             }
         }
         .navigationTitle(model.selectedImage?.fileName ?? "Workspace")
-        .confirmationDialog(
-            "Delete this image from the dataset?",
-            isPresented: $confirmDeleteImage,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Image", role: .destructive) {
-                if let id = model.selectedImageID { model.deleteImage(id: id) }
-            }
-        } message: {
-            Text("The image and its \(model.annotationsForSelectedImage.count) annotations will be removed.")
-        }
     }
 }
 
@@ -89,8 +76,10 @@ struct AnnotationInspector: View {
                 Section("Image") {
                     LabeledContent("Filename", value: image.fileName)
                     LabeledContent("Dimensions", value: "\(image.size.width) × \(image.size.height)")
-                    Picker("Review", selection: Binding(get: { image.reviewState }, set: { state in MainActor.assumeIsolated { model.setReviewState(state) } })) {
-                        ForEach(ReviewState.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+                    Picker("Split", selection: Binding(get: { image.split }, set: { split in MainActor.assumeIsolated { model.setSplit(split, for: Set([image.id])) } })) {
+                        ForEach([DatasetSplit.train, .validation, .test, .unassigned], id: \.self) { split in
+                            Text(split == .unassigned ? "Unassigned" : split.yoloName.capitalized).tag(split)
+                        }
                     }
                     Button("Show in Finder", systemImage: "folder") {
                         if let url = model.imageURL(for: image) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
@@ -102,12 +91,6 @@ struct AnnotationInspector: View {
                 Button("Run on Current Image", systemImage: "sparkles") { model.runInference() }.disabled(model.selectedImage == nil)
                 Button("Remove Suggestions", systemImage: "sparkles.square.filled.on.square") { model.removeSuggestions() }.disabled(!model.annotationsForSelectedImage.contains { $0.source == .aiSuggestion })
                 Text("Suggestions remain editable until accepted.").font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Validation") {
-                Label(model.validation.message, systemImage: "checkmark.shield")
-                if model.validation.errors > 0 { Text("\(model.validation.errors) errors").foregroundStyle(.red) }
-                if model.validation.warnings > 0 { Text("\(model.validation.warnings) warnings").foregroundStyle(.orange) }
-                Button("Run Validation", action: model.validate)
             }
         }
         .listStyle(.sidebar)

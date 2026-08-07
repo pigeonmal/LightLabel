@@ -4,7 +4,6 @@ public struct COCOExporter: Sendable {
     public init() {}
 
     public func export(_ dataset: AnnotationDataset, to url: URL) throws -> DatasetExportResult {
-        guard !dataset.categories.isEmpty else { throw DatasetFormatError.missingCategories }
         let categoryIDs = Dictionary(uniqueKeysWithValues: dataset.categories.enumerated().map { ($0.element.id, $0.offset + 1) })
         let imageIDs = Dictionary(uniqueKeysWithValues: dataset.images.enumerated().map { ($0.element.id, $0.offset + 1) })
         var warnings: [DatasetFormatWarning] = []

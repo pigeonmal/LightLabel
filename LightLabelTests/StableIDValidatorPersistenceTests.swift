@@ -107,4 +107,70 @@ final class StableIDValidatorPersistenceTests: XCTestCase {
         let loaded = try await persistence.loadDataset()
         XCTAssertEqual(loaded.name, "Latest")
     }
+
+    func testSmartSplitAssignsEveryImageAndKeepsClassDistribution() {
+        let category = DatasetCategory(name: "bird")
+        let images = (0..<10).map { DatasetImage(fileName: "\($0).png", size: .init(width: 10, height: 10)) }
+        let annotations = images.map { DatasetAnnotation(imageID: $0.id, categoryID: category.id, geometry: .boundingBox(.init(x: 0, y: 0, width: 0.2, height: 0.2))) }
+        let assignments = SmartSplitPlanner().assignments(
+            images: images,
+            annotations: annotations,
+            configuration: .init(trainRatio: 0.8, validationRatio: 0.1)
+        )
+
+        XCTAssertEqual(assignments.count, images.count)
+        XCTAssertEqual(Set(assignments.values), Set([.train, .validation, .test]))
+        XCTAssertEqual(assignments.values.count(where: { $0 == .train }), 8)
+        XCTAssertEqual(assignments.values.count(where: { $0 == .validation }), 1)
+        XCTAssertEqual(assignments.values.count(where: { $0 == .test }), 1)
+    }
+
+    func testMergeFromYOLODataYAMLCopiesImagesAndAnnotations() async throws {
+        let directory = try TestSupport.makeTemporaryDirectory()
+        defer { TestSupport.removeTemporaryDirectory(directory) }
+        let source = directory.appendingPathComponent("source", isDirectory: true)
+        let target = directory.appendingPathComponent("target", isDirectory: true)
+        let sourceImages = source.appendingPathComponent("images/train", isDirectory: true)
+        let sourceLabels = source.appendingPathComponent("labels/train", isDirectory: true)
+        try FileManager.default.createDirectory(at: sourceImages, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: sourceLabels, withIntermediateDirectories: true)
+        try "path: .\ntrain: images/train\nval: images/val\nnames: [bird]\n".write(to: source.appendingPathComponent("data.yaml"), atomically: true, encoding: .utf8)
+        try TestSupport.writeTinyPNG(to: sourceImages.appendingPathComponent("bird.png"))
+        try "0 0.5 0.5 0.5 0.5\n".write(to: sourceLabels.appendingPathComponent("bird.txt"), atomically: true, encoding: .utf8)
+
+        let services = LocalDatasetServices()
+        let targetDataset = try await services.createDataset(named: "Target", at: target, syncFormat: .yoloDetection)
+        let merged = try await services.mergeDataset(from: source.appendingPathComponent("data.yaml"), into: targetDataset)
+
+        let image = try XCTUnwrap(merged.images.first)
+        XCTAssertEqual(image.relativePath, "images/train/bird.png")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target.appendingPathComponent(image.relativePath).path))
+        XCTAssertEqual(merged.annotations.count, 1)
+        XCTAssertEqual(merged.annotations.first?.imageID, image.id)
+    }
+
+    func testMergeFromNestedCOCOJSONCopiesSiblingImages() async throws {
+        let directory = try TestSupport.makeTemporaryDirectory()
+        defer { TestSupport.removeTemporaryDirectory(directory) }
+        let source = directory.appendingPathComponent("source", isDirectory: true)
+        let imageDirectory = source.appendingPathComponent("images/train", isDirectory: true)
+        let annotationDirectory = source.appendingPathComponent("annotations/train", isDirectory: true)
+        let jsonURL = annotationDirectory.appendingPathComponent("instances.json")
+        let target = directory.appendingPathComponent("target", isDirectory: true)
+        try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: annotationDirectory, withIntermediateDirectories: true)
+        try TestSupport.writeTinyPNG(to: imageDirectory.appendingPathComponent("frame.png"))
+        let json = """
+        {"images":[{"id":1,"file_name":"frame.png","width":1,"height":1}],"annotations":[],"categories":[]}
+        """
+        try json.write(to: jsonURL, atomically: true, encoding: .utf8)
+
+        let services = LocalDatasetServices()
+        let targetDataset = try await services.createDataset(named: "Target", at: target, syncFormat: .coco)
+        let merged = try await services.mergeDataset(from: jsonURL, into: targetDataset)
+
+        let image = try XCTUnwrap(merged.images.first)
+        XCTAssertEqual(image.relativePath, "images/imported/frame.png")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target.appendingPathComponent(image.relativePath).path))
+    }
 }

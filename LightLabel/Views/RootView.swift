@@ -87,9 +87,38 @@ struct RootView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 300)
+                .help(model.tool == .smartPolygon ? "Click an object to generate an editable mask polygon" : "Choose an annotation tool")
             }
         }
         ToolbarItemGroup(placement: .primaryAction) {
+            if model.browserMode == .grid {
+                Menu {
+                    Picker("Sort by", selection: Binding(get: { model.imageSortKey }, set: { model.toggleSort($0) })) {
+                        ForEach(ImageSortKey.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    Divider()
+                    Button(model.imageSortAscending ? "Sort Descending" : "Sort Ascending") {
+                        model.imageSortAscending.toggle()
+                    }
+                } label: {
+                    Label("Sort", systemImage: "arrow.up.arrow.down")
+                }
+                .help("Sort images like Finder")
+            }
+            if !model.selectedImageIDs.isEmpty {
+                Menu {
+                    ForEach([DatasetSplit.train, .validation, .test, .unassigned], id: \.self) { split in
+                        Button(split == .unassigned ? "Unassigned" : split.yoloName.capitalized) {
+                            model.setSplit(split)
+                        }
+                    }
+                } label: {
+                    Label("Set Split", systemImage: "arrow.triangle.branch")
+                }
+                Button(role: .destructive) { model.deleteSelectedImages() } label: {
+                    Label("Trash \(model.selectedImageIDs.count == 1 ? "Image" : "Images")", systemImage: "trash")
+                }
+            }
             Button { model.runInference() } label: {
                 Label("Run AI", systemImage: "sparkles")
             }

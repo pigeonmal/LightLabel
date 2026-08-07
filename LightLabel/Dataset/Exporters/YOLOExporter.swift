@@ -4,7 +4,6 @@ public struct YOLOExporter: Sendable {
     public init() {}
 
     public func export(_ dataset: AnnotationDataset, to rootURL: URL, task: YOLOTask) throws -> DatasetExportResult {
-        guard !dataset.categories.isEmpty else { throw DatasetFormatError.missingCategories }
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
         let categories = dataset.categories.enumerated().reduce(into: [UUID: Int]()) { $0[$1.element.id] = $1.offset }

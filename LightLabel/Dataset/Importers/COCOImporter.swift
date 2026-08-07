@@ -4,7 +4,6 @@ public struct COCOImporter: Sendable {
     public init() {}
 
     public func importDataset(at url: URL, imageRoot: URL? = nil) throws -> DatasetImportResult {
-        _ = imageRoot
         guard let data = try? Data(contentsOf: url) else { throw DatasetFormatError.unreadableFile(url.path) }
         let document: Document
         do { document = try JSONDecoder().decode(Document.self, from: data) }
@@ -14,10 +13,11 @@ public struct COCOImporter: Sendable {
             DatasetCategory(id: StableID.make(namespace: "coco-category", components: [String($0.id), $0.name]), name: $0.name, supercategory: $0.supercategory, sourceID: $0.id)
         }
         let categoryIDs = Dictionary(uniqueKeysWithValues: zip(document.categories, categories).map { ($0.0.id, $0.1.id) })
+        let imageIndex = imageRoot.map(Self.imageIndex)
         let images = document.images.map {
-            let relative = $0.fileName.replacingOccurrences(of: "\\", with: "/")
-            let split = DatasetSplit(yoloName: $0.split ?? "")
-            return DatasetImage(id: StableID.make(namespace: "coco-image", components: [String($0.id), relative]), fileName: URL(fileURLWithPath: relative).lastPathComponent, relativePath: relative, size: .init(width: $0.width, height: $0.height), split: split, sourceID: $0.id)
+            let relative = Self.resolveRelativePath(fileName: $0.fileName, jsonURL: url, imageRoot: imageRoot, imageIndex: imageIndex)
+            let split = DatasetSplit(yoloName: $0.split ?? Self.inferredSplit(for: relative, jsonURL: url, imageRoot: imageRoot))
+            return DatasetImage(id: StableID.make(namespace: "coco-image", components: [url.path, String($0.id), relative]), fileName: URL(fileURLWithPath: relative).lastPathComponent, relativePath: relative, size: .init(width: $0.width, height: $0.height), split: split, sourceID: $0.id)
         }
         let imageIDs = Dictionary(uniqueKeysWithValues: zip(document.images, images).map { ($0.0.id, $0.1.id) })
         let imageSizes = Dictionary(uniqueKeysWithValues: document.images.map { ($0.id, PixelSize(width: $0.width, height: $0.height)) })
@@ -47,11 +47,60 @@ public struct COCOImporter: Sendable {
                 continue
             }
             let metadata = item.attributes ?? [:]
-            annotations.append(.init(id: StableID.make(namespace: "coco-annotation", components: [String(item.id)]), imageID: imageID, categoryID: categoryID, geometry: geometry, attributes: .init(confidence: item.score, isCrowd: item.isCrowd == 1, metadata: metadata), sourceID: item.id))
+            annotations.append(.init(id: StableID.make(namespace: "coco-annotation", components: [url.path, String(item.id)]), imageID: imageID, categoryID: categoryID, geometry: geometry, attributes: .init(confidence: item.score, isCrowd: item.isCrowd == 1, metadata: metadata), sourceID: item.id))
         }
         let name = url.deletingPathExtension().lastPathComponent
         let info = document.info?.mapValues(\.stringValue) ?? [:]
         return .init(dataset: .init(id: StableID.make(namespace: "coco-dataset", components: [url.standardizedFileURL.path]), name: name, images: images, categories: categories, annotations: annotations, metadata: info.mapKeys { "coco.info.\($0)" }), warnings: warnings)
+    }
+
+    private static func imageIndex(_ root: URL) -> [String: [String]] {
+        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return [:] }
+        var result: [String: [String]] = [:]
+        for case let file as URL in enumerator where imageExtensions.contains(file.pathExtension.lowercased()) {
+            let relative = relativePath(file, from: root)
+            result[file.lastPathComponent.lowercased(), default: []].append(relative)
+        }
+        return result
+    }
+
+    private static func resolveRelativePath(fileName: String, jsonURL: URL, imageRoot: URL?, imageIndex: [String: [String]]?) -> String {
+        let normalized = fileName.replacingOccurrences(of: "\\", with: "/").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let imageRoot else { return normalized }
+        let candidates = [
+            imageRoot.appendingPathComponent(normalized),
+            jsonURL.deletingLastPathComponent().appendingPathComponent(normalized)
+        ]
+        if let match = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
+            return relativePath(match, from: imageRoot)
+        }
+        if let indexed = imageIndex?[URL(fileURLWithPath: normalized).lastPathComponent.lowercased()], let first = indexed.first {
+            return first
+        }
+        return normalized
+    }
+
+    private static func inferredSplit(for relativePath: String, jsonURL: URL, imageRoot: URL?) -> String {
+        let components = relativePath.split(separator: "/").map(String.init)
+        if let component = components.first(where: { ["train", "val", "valid", "validation", "test"].contains($0.lowercased()) }) { return component }
+        let jsonName = jsonURL.deletingPathExtension().lastPathComponent.lowercased()
+        if jsonName.contains("train") { return "train" }
+        if jsonName.contains("val") { return "validation" }
+        if jsonName.contains("test") { return "test" }
+        if let imageRoot {
+            let parent = jsonURL.deletingLastPathComponent().path.replacingOccurrences(of: imageRoot.standardizedFileURL.path, with: "")
+            if let component = parent.split(separator: "/").map(String.init).first(where: { ["train", "val", "valid", "validation", "test"].contains($0.lowercased()) }) { return component }
+        }
+        return ""
+    }
+
+    private static func relativePath(_ file: URL, from root: URL) -> String {
+        let rootComponents = root.resolvingSymlinksInPath().pathComponents
+        let fileComponents = file.resolvingSymlinksInPath().pathComponents
+        guard fileComponents.starts(with: rootComponents) else {
+            return file.lastPathComponent
+        }
+        return fileComponents.dropFirst(rootComponents.count).joined(separator: "/")
     }
 
     private static func pixelArea(_ coordinates: [Double]) -> Double {
@@ -59,6 +108,8 @@ public struct COCOImporter: Sendable {
         let points = stride(from: 0, to: coordinates.count, by: 2).map { (coordinates[$0], coordinates[$0 + 1]) }
         return abs(zip(points, points.dropFirst() + points.prefix(1)).reduce(0) { $0 + $1.0.0 * $1.1.1 - $1.1.0 * $1.0.1 }) / 2
     }
+
+    private static let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "tif", "tiff", "bmp", "webp"]
 
     private struct Document: Codable {
         var info: [String: JSONValue]?

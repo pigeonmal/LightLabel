@@ -42,6 +42,7 @@ struct LightLabelCommands: Commands {
             Button("Selection Tool") { model.tool = .select }.keyboardShortcut("v", modifiers: [])
             Button("Bounding Box Tool") { model.tool = .box }.keyboardShortcut("b", modifiers: [])
             Button("Polygon Tool") { model.tool = .polygon }.keyboardShortcut("p", modifiers: [])
+            Button("Smart Polygon Tool") { model.tool = .smartPolygon }.keyboardShortcut("s", modifiers: [])
             Button("Pan Tool") { model.tool = .pan }.keyboardShortcut("h", modifiers: [])
             Divider()
             Button("Previous Image") { model.navigate(-1) }.keyboardShortcut(.leftArrow, modifiers: [])

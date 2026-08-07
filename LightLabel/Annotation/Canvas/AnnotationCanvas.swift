@@ -11,6 +11,7 @@ struct AnnotationCanvas: NSViewRepresentable {
         view.onGeometryChange = model.updateGeometry
         view.onDelete = model.deleteSelection
         view.onToolChange = { model.tool = $0 }
+        view.onSmartPolygonError = { model.alertMessage = $0 }
         return view
     }
 
@@ -27,6 +28,7 @@ final class AnnotationCanvasView: NSView {
     var onGeometryChange: (UUID, AnnotationGeometry, AnnotationGeometry, String) -> Void = { _, _, _, _ in }
     var onDelete: () -> Void = {}
     var onToolChange: (AnnotationTool) -> Void = { _ in }
+    var onSmartPolygonError: (String) -> Void = { _ in }
 
     private var image: CGImage?
     private var imageURL: URL?
@@ -46,6 +48,9 @@ final class AnnotationCanvasView: NSView {
     private var selectedVertex: (annotationID: UUID, index: Int)?
     private var draftPoints: [NormalizedPoint] = []
     private var drag: DragState?
+    private var smartTask: Task<Void, Never>?
+    private var smartPrompt: CGPoint?
+    private var smartSegmentationRunning = false
     private var magnificationStart: CGFloat = 1
 
     override var acceptsFirstResponder: Bool { true }
@@ -64,6 +69,7 @@ final class AnnotationCanvasView: NSView {
         self.imageSize = imageSize; self.annotations = annotations; self.categoryStyles = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, ($0.name, NSColor(hex: $0.colorHex))) }); self.selectedID = selectedID; self.tool = tool; self.showLabels = showLabels; self.showHandles = showHandles
         if lastFitRequest != viewport.fitRequest { lastFitRequest = viewport.fitRequest; zoom = 1; pan = .zero }
         if self.imageURL != imageURL {
+            smartTask?.cancel(); smartTask = nil; smartPrompt = nil; smartSegmentationRunning = false; draftPoints.removeAll()
             self.imageURL = imageURL; image = nil; loadTask?.cancel()
             if let imageURL {
                 loadTask = Task { [weak self] in
@@ -131,7 +137,16 @@ final class AnnotationCanvasView: NSView {
 
     private func drawDraft(transform: CanvasMapping, context: CGContext) {
         if case let .box(start, current) = drag { context.setStrokeColor(NSColor.controlAccentColor.cgColor); context.setLineDash(phase: 0, lengths: [5, 4]); context.stroke(CGRect(x: min(start.x, current.x), y: min(start.y, current.y), width: abs(current.x - start.x), height: abs(current.y - start.y))) }
+        if smartSegmentationRunning, let smartPrompt {
+            context.setFillColor(NSColor.controlAccentColor.withAlphaComponent(0.2).cgColor)
+            context.fillEllipse(in: CGRect(x: smartPrompt.x - 7, y: smartPrompt.y - 7, width: 14, height: 14))
+            drawLabel("Segmenting…", confidence: nil, at: CGPoint(x: smartPrompt.x + 10, y: smartPrompt.y), color: .controlAccentColor)
+        }
         guard !draftPoints.isEmpty else { return }
+        if tool == .smartPolygon, draftPoints.count >= 3 {
+            context.setFillColor(NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor)
+            context.beginPath(); context.move(to: transform.canvasPoint(from: draftPoints[0])); for point in draftPoints.dropFirst() { context.addLine(to: transform.canvasPoint(from: point)) }; context.closePath(); context.fillPath()
+        }
         context.setStrokeColor(NSColor.controlAccentColor.cgColor); context.setLineWidth(2); context.beginPath(); context.move(to: transform.canvasPoint(from: draftPoints[0])); for point in draftPoints.dropFirst() { context.addLine(to: transform.canvasPoint(from: point)) }; context.strokePath()
         for point in draftPoints { drawHandle(transform.canvasPoint(from: point), color: .controlAccentColor, context: context) }
     }
@@ -141,6 +156,10 @@ final class AnnotationCanvasView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         if tool == .pan { drag = .pan(start: point, origin: pan); return }
         if tool == .box { drag = .box(start: point, current: point); return }
+        if tool == .smartPolygon {
+            startSmartPolygon(at: point, transform: transform)
+            return
+        }
         if tool == .polygon {
             let normalized = transform.normalizedPoint(from: point, clamp: true)
             if event.clickCount > 1 { finishPolygon() } else if draftPoints.count >= 3, distance(point, transform.canvasPoint(from: draftPoints[0])) < 10 { finishPolygon() } else { draftPoints.append(normalized); needsDisplay = true }
@@ -183,7 +202,7 @@ final class AnnotationCanvasView: NSView {
 
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
-        case 53: draftPoints.removeAll(); drag = nil; onToolChange(.select); needsDisplay = true
+        case 53: smartTask?.cancel(); smartTask = nil; smartPrompt = nil; smartSegmentationRunning = false; draftPoints.removeAll(); drag = nil; onToolChange(.select); needsDisplay = true
         case 36, 76: finishPolygon()
         case 51, 117: deleteVertexOrSelection()
         case 123: nudge(dx: -1, dy: 0, large: event.modifierFlags.contains(.shift))
@@ -191,11 +210,40 @@ final class AnnotationCanvasView: NSView {
         case 125: nudge(dx: 0, dy: 1, large: event.modifierFlags.contains(.shift))
         case 126: nudge(dx: 0, dy: -1, large: event.modifierFlags.contains(.shift))
         default:
-            if let text = event.charactersIgnoringModifiers?.lowercased() { if text == "v" { onToolChange(.select) } else if text == "b" { onToolChange(.box) } else if text == "p" { onToolChange(.polygon) } else { super.keyDown(with: event) } }
+            if let text = event.charactersIgnoringModifiers?.lowercased() { if text == "v" { onToolChange(.select) } else if text == "b" { onToolChange(.box) } else if text == "p" { onToolChange(.polygon) } else if text == "s" { onToolChange(.smartPolygon) } else { super.keyDown(with: event) } }
         }
     }
 
     private func finishPolygon() { if draftPoints.count >= 3 { onCreate(.polygon(.init(points: draftPoints))) }; draftPoints.removeAll(); needsDisplay = true }
+
+    private func startSmartPolygon(at point: CGPoint, transform: CanvasMapping) {
+        guard smartTask == nil, let image else { return }
+        smartPrompt = point
+        smartSegmentationRunning = true
+        draftPoints.removeAll()
+        needsDisplay = true
+        let prompt = transform.normalizedPoint(from: point, clamp: true)
+        smartTask = Task { [weak self, image] in
+            do {
+                let polygon = try await SmartPolygonSegmenter().segment(image: image, at: prompt)
+                guard !Task.isCancelled, let self else { return }
+                self.smartTask = nil
+                self.smartPrompt = nil
+                self.smartSegmentationRunning = false
+                self.draftPoints = polygon.points
+                self.onCreate(.polygon(polygon))
+                self.draftPoints.removeAll()
+                self.needsDisplay = true
+            } catch {
+                guard !Task.isCancelled, let self else { return }
+                self.smartTask = nil
+                self.smartPrompt = nil
+                self.smartSegmentationRunning = false
+                self.onSmartPolygonError(error.localizedDescription)
+                self.needsDisplay = true
+            }
+        }
+    }
     private func deleteVertexOrSelection() {
         guard let selectedVertex, let annotation = annotations.first(where: { $0.id == selectedVertex.annotationID }), case let .polygon(polygon) = annotation.geometry, polygon.points.indices.contains(selectedVertex.index), polygon.points.count > 3 else { onDelete(); return }
         var points = polygon.points; points.remove(at: selectedVertex.index); let changed = AnnotationGeometry.polygon(.init(points: points)); onGeometryChange(annotation.id, annotation.geometry, changed, "Delete Polygon Vertex"); self.selectedVertex = nil

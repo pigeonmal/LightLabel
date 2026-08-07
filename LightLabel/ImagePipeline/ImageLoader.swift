@@ -112,7 +112,10 @@ public actor ImageLoader {
 
     private static func sizeBucket(_ maximumPixelSize: Int) -> Int {
         let size = max(1, maximumPixelSize)
-        return ((size + 255) / 256) * 256
+        // List thumbnails are 64 px wide. Rounding those requests to 256 px
+        // quadrupled decode area and made fast scrolling needlessly expensive.
+        let bucket = 128
+        return ((size + bucket - 1) / bucket) * bucket
     }
 
     private static func cacheKey(url: URL, maximumPixelSize: Int, appliesOrientation: Bool) -> String {

@@ -1,0 +1,15 @@
+{
+  "originHash" : "c22b70131ab0c9b6f8c23064f7f075341dd803bc70e287c1774b5e9789b301a3",
+  "pins" : [
+    {
+      "identity" : "samkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/john-rocky/SamKit.git",
+      "state" : {
+        "revision" : "e6e154cb86eafa56641a2997e806fedbc489dbf5",
+        "version" : "1.0.1"
+      }
+    }
+  ],
+  "version" : 3
+}

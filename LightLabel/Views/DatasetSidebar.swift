@@ -4,6 +4,7 @@ import SwiftUI
 struct DatasetSidebar: View {
     @Bindable var model: AppModel
     @State private var categoryEditor: CategoryEditor?
+    @State private var showSmartSplit = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -114,11 +115,13 @@ struct DatasetSidebar: View {
                         LabeledContent("Showing", value: model.filteredImages.count.formatted())
                     }
 
-                    Section("Validation") {
-                        Label(model.validation.message, systemImage: validationSymbol)
-                            .foregroundStyle(model.validation.errors > 0 ? .red : .secondary)
-                            .font(.caption)
-                        Button("Validate Dataset", action: model.validate)
+                    Section("Dataset") {
+                        Button("Smart Split…", systemImage: "wand.and.stars") { showSmartSplit = true }
+                        if model.selectedImageIDs.count > 1 {
+                            Text("\(model.selectedImageIDs.count) images selected")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .listStyle(.sidebar)
@@ -138,6 +141,7 @@ struct DatasetSidebar: View {
                         Spacer()
                         Menu {
                             Button("Import YOLO or COCO…", action: model.importDataset)
+                            Button("Import Into Current Dataset…", action: model.importIntoCurrentDataset)
                             Button("Export Dataset…", action: model.exportDataset)
                         } label: {
                             Label("Transfer", systemImage: "arrow.up.arrow.down")
@@ -163,6 +167,9 @@ struct DatasetSidebar: View {
                 if let id = editor.categoryID { model.updateCategory(id: id, name: name, colorHex: hex) } else { model.addCategory(name: name, colorHex: hex) }
             }
         }
+        .sheet(isPresented: $showSmartSplit) {
+            SmartSplitSheet(model: model)
+        }
     }
 
     private func categoryCount(_ id: UUID) -> Int {
@@ -174,15 +181,50 @@ struct DatasetSidebar: View {
         case .all: "photo.on.rectangle.angled"
         case .unannotated: "circle.dashed"
         case .annotated: "rectangle.and.pencil.and.ellipsis"
-        case .reviewed: "checkmark.seal"
         case .suggestions: "sparkles"
         }
     }
+}
 
-    private var validationSymbol: String {
-        if model.validation.errors > 0 { return "xmark.octagon.fill" }
-        if model.validation.warnings > 0 { return "exclamationmark.triangle.fill" }
-        return "checkmark.circle"
+private struct SmartSplitSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var model: AppModel
+    @State private var trainRatio = 0.8
+    @State private var validationRatio = 0.1
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Smart Split").font(.title2.weight(.semibold))
+            Text("Images are grouped by visual similarity, then assigned to preserve class ratios.")
+                .font(.callout).foregroundStyle(.secondary)
+            VStack(alignment: .leading) {
+                HStack {
+                    Text("Train")
+                    Spacer()
+                    Text("\(Int(trainRatio * 100))%")
+                }
+                Slider(value: $trainRatio, in: 0.5...0.95, step: 0.05)
+                HStack {
+                    Text("Validation")
+                    Spacer()
+                    Text("\(Int(validationRatio * 100))%")
+                }
+                Slider(value: $validationRatio, in: 0...min(0.4, 1 - trainRatio), step: 0.05)
+                Text("Test: \(Int(max(0, 1 - trainRatio - validationRatio) * 100))%")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Split") {
+                    model.smartSplit(trainRatio: trainRatio, validationRatio: validationRatio)
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 430)
     }
 }
 

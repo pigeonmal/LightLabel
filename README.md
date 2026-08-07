@@ -16,9 +16,14 @@ The repository contains the complete format-independent domain model, geometry t
 - Debounced, atomic project JSON persistence with automatic source-format synchronization
 - Lazy ImageIO image and thumbnail decoding
 - Native SwiftUI browser, workspace, sidebar, inspector, menus, and shortcuts
+- Finder-style sorting, multi-selection, bulk split changes, and bulk Trash actions in grid/list views
+- SAM2 Tiny Smart Polygon clicks using on-device Core ML masks, with crop-first prompts for small objects
+- Smart splitting that groups visually similar images and balances class distribution across splits
+- New-dataset format selection with automatic YOLO or COCO synchronization
+- Nested COCO discovery and image-copying dataset merge/import
 - Local Core ML inference through Vision recognized objects or a configurable raw YOLO tensor decoder
 - Confidence filtering and class-aware or class-agnostic non-maximum suppression
-- No third-party runtime dependencies
+- On-device SAM2 runtime through the Apache-2.0 SamKit Swift package; no network inference
 
 ## Requirements
 
@@ -44,7 +49,7 @@ xcodebuild -project LightLabel.xcodeproj \
 
 ## Run
 
-In Xcode, select the `LightLabel` scheme and press Command-R. The app opens to a native welcome view with actions to create, open, or import a local dataset. Opening a folder detects `.lightlabel/dataset.json`, YOLO `data.yaml`, or a COCO JSON document.
+In Xcode, select the `LightLabel` scheme and press Command-R. The app opens to a native welcome view with actions to create, open, or import a local dataset. Opening a folder detects `.lightlabel/dataset.json`, YOLO `data.yaml`, or COCO JSON documents anywhere under the folder, including split-specific annotation folders.
 
 ## Test
 
@@ -96,7 +101,7 @@ dataset/
 
 ### COCO JSON
 
-COCO import reads `info`, `images`, `annotations`, and `categories`. Bounding boxes are `[x, y, width, height]` in pixels. Polygon segmentation arrays are converted from pixels to normalized points. Source image, category, and annotation IDs are retained in model fields; simple `info` values and string annotation attributes are retained as metadata.
+COCO import reads `info`, `images`, `annotations`, and `categories`. Bounding boxes are `[x, y, width, height]` in pixels. Polygon segmentation arrays are converted from pixels to normalized points. Source image, category, and annotation IDs are retained in model fields; simple `info` values and string annotation attributes are retained as metadata. When a COCO file is nested under a split folder, image paths are resolved against the dataset root and the split is inferred when it is not present in the JSON.
 
 COCO export emits pretty-printed JSON with stable array ordering, deterministic sequential image/category IDs, pixel bounding boxes, polygon arrays, and recomputed polygon bounds and area. A source annotation ID is reused when present. For multipart segmentation, import keeps only the largest polygon and warns. RLE is reported and skipped because it is not editable polygon geometry.
 
@@ -117,7 +122,7 @@ LightLabel/
 │   ├── Persistence/             Atomic project JSON and debounce
 │   └── Validation/              Dataset consistency checks
 ├── ImagePipeline/               ImageIO loading and concurrency control
-├── AI/                          Vision/Core ML adapters, raw YOLO, NMS
+├── AI/                          SAM2, Vision/Core ML adapters, raw YOLO, NMS
 ├── Utilities/                   Stable deterministic IDs
 └── Views/                       Native browser, workspace, and inspector
 LightLabelTests/                 XCTest unit tests and fixtures
@@ -149,7 +154,7 @@ LightLabel is designed to work fully offline. It contains no analytics, advertis
 - Raw YOLO decoding supports common rank-two effective tensors only. It does not decode masks, anchors, distribution focal loss, or model-specific multi-head outputs.
 - Core ML segmentation suggestion decoding is an extension point. The current model loader directly supports Vision recognized-object outputs; raw YOLO tensors require decoder configuration in code.
 - Saving a modification automatically synchronizes the source format that was opened or imported: YOLO writes `data.yaml` and labels, and COCO rewrites its source JSON. The internal `.lightlabel/dataset.json` remains the recovery copy.
-- Polygon editing supports creation, selection, whole-polygon movement, vertex movement, and vertex deletion. Edge insertion and multipart polygons are not yet supported.
+- Polygon editing supports creation, selection, whole-polygon movement, vertex movement, vertex deletion, and click-guided Smart Polygon masks. Edge insertion and multipart polygons are not yet supported. Smart Polygon uses the bundled SAM2 Tiny Core ML model and retries with a wider prompt context when a small-object crop is clipped; Vision foreground instance segmentation remains a fallback.
 - Batch inference/export progress is represented by cancellable UI state, but the current services perform one current-image inference or one export operation at a time.
 
 ## Future Extensions

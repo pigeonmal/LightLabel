@@ -57,12 +57,6 @@ public enum AnnotationSource: String, Codable, CaseIterable, Sendable {
     case aiAccepted
 }
 
-public enum ReviewState: String, Codable, CaseIterable, Sendable {
-    case unreviewed
-    case reviewed
-    case needsAttention
-}
-
 public struct DatasetCategory: Codable, Hashable, Sendable, Identifiable {
     public var id: UUID
     public var name: String
@@ -109,7 +103,6 @@ public struct DatasetImage: Codable, Hashable, Sendable, Identifiable {
     public var split: DatasetSplit
     public var sourceID: Int?
     public var metadata: [String: String]
-    public var reviewState: ReviewState
 
     public init(
         id: UUID = UUID(),
@@ -118,8 +111,7 @@ public struct DatasetImage: Codable, Hashable, Sendable, Identifiable {
         size: PixelSize,
         split: DatasetSplit = .unassigned,
         sourceID: Int? = nil,
-        metadata: [String: String] = [:],
-        reviewState: ReviewState = .unreviewed
+        metadata: [String: String] = [:]
     ) {
         self.id = id
         self.fileName = fileName
@@ -128,10 +120,9 @@ public struct DatasetImage: Codable, Hashable, Sendable, Identifiable {
         self.split = split
         self.sourceID = sourceID
         self.metadata = metadata
-        self.reviewState = reviewState
     }
 
-    private enum CodingKeys: String, CodingKey { case id, fileName, relativePath, size, split, sourceID, metadata, reviewState }
+    private enum CodingKeys: String, CodingKey { case id, fileName, relativePath, size, split, sourceID, metadata }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -142,7 +133,6 @@ public struct DatasetImage: Codable, Hashable, Sendable, Identifiable {
         split = try container.decodeIfPresent(DatasetSplit.self, forKey: .split) ?? .unassigned
         sourceID = try container.decodeIfPresent(Int.self, forKey: .sourceID)
         metadata = try container.decodeIfPresent([String: String].self, forKey: .metadata) ?? [:]
-        reviewState = try container.decodeIfPresent(ReviewState.self, forKey: .reviewState) ?? .unreviewed
     }
 }
 

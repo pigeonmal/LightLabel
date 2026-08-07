@@ -32,6 +32,47 @@ final class YOLOFormatTests: XCTestCase {
         XCTAssertEqual(box, BoundingBox(x: 0.25, y: 0.3, width: 0.5, height: 0.4))
     }
 
+    func testRoboflowParentRelativeImagePathsResolveInsideDatasetRoot() throws {
+        let root = try TestSupport.makeTemporaryDirectory()
+        defer { TestSupport.removeTemporaryDirectory(root) }
+        let imageDirectory = root.appendingPathComponent("train/images", isDirectory: true)
+        let labelDirectory = root.appendingPathComponent("train/labels", isDirectory: true)
+        try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: labelDirectory, withIntermediateDirectories: true)
+        let yaml = "train: ../train/images\nval: ../valid/images\nnames: [bird]\n"
+        try yaml.write(to: root.appendingPathComponent("data.yaml"), atomically: true, encoding: .utf8)
+        try TestSupport.writeTinyPNG(to: imageDirectory.appendingPathComponent("bird.png"))
+        try "0 0.5 0.5 0.5 0.5\n".write(to: labelDirectory.appendingPathComponent("bird.txt"), atomically: true, encoding: .utf8)
+
+        let imported = try YOLOImporter().importDataset(at: root, task: .detection)
+
+        XCTAssertEqual(imported.dataset.images.count, 1)
+        XCTAssertEqual(imported.dataset.images.first?.relativePath, "train/images/bird.png")
+        XCTAssertEqual(imported.dataset.annotations.count, 1)
+    }
+
+    func testRoboflowInvertedImageDirectoryLayoutResolvesAgainstSplitFolders() throws {
+        let root = try TestSupport.makeTemporaryDirectory()
+        defer { TestSupport.removeTemporaryDirectory(root) }
+        let trainImages = root.appendingPathComponent("train/images", isDirectory: true)
+        let trainLabels = root.appendingPathComponent("train/labels", isDirectory: true)
+        let validImages = root.appendingPathComponent("valid/images", isDirectory: true)
+        try FileManager.default.createDirectory(at: trainImages, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: trainLabels, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: validImages, withIntermediateDirectories: true)
+        let yaml = "train: images/train\nval: images/val\ntest: images/test\nnames: [bird]\n"
+        try yaml.write(to: root.appendingPathComponent("data.yaml"), atomically: true, encoding: .utf8)
+        try TestSupport.writeTinyPNG(to: trainImages.appendingPathComponent("train.png"))
+        try TestSupport.writeTinyPNG(to: validImages.appendingPathComponent("valid.png"))
+        try "0 0.5 0.5 0.5 0.5\n".write(to: trainLabels.appendingPathComponent("train.txt"), atomically: true, encoding: .utf8)
+
+        let imported = try YOLOImporter().importDataset(at: root, task: .detection)
+
+        XCTAssertEqual(imported.dataset.images.count, 2)
+        XCTAssertEqual(imported.dataset.images.map(\.split), [.train, .validation])
+        XCTAssertEqual(imported.dataset.annotations.count, 1)
+    }
+
     func testAutomaticImportDetectsSegmentationRow() throws {
         let root = try makeYOLOFixture(labelFixture: "yolo-segmentation.txt")
         defer { TestSupport.removeTemporaryDirectory(root) }

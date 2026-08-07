@@ -9,6 +9,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
     case select = "Select"
     case box = "Box"
     case polygon = "Polygon"
+    case smartPolygon = "Smart Polygon"
     case pan = "Pan"
 
     var id: Self { self }
@@ -18,6 +19,7 @@ enum AnnotationTool: String, CaseIterable, Identifiable {
         case .select: "arrow.up.left"
         case .box: "rectangle.dashed"
         case .polygon: "point.3.connected.trianglepath.dotted"
+        case .smartPolygon: "wand.and.stars"
         case .pan: "hand.draw"
         }
     }
@@ -44,8 +46,16 @@ enum StatusFilter: String, CaseIterable, Identifiable {
     case all = "All images"
     case unannotated = "Unannotated"
     case annotated = "Annotated"
-    case reviewed = "Reviewed"
     case suggestions = "AI suggestions"
+
+    var id: Self { self }
+}
+
+enum ImageSortKey: String, CaseIterable, Identifiable {
+    case name = "Name"
+    case size = "Size"
+    case split = "Split"
+    case labels = "Labels"
 
     var id: Self { self }
 }
@@ -70,19 +80,37 @@ struct OperationProgress: Equatable {
 
 protocol DatasetApplicationServices: Sendable {
     func openDataset(at url: URL) async throws -> AnnotationDataset
-    func createDataset(named name: String, at url: URL) async throws -> AnnotationDataset
+    func createDataset(named name: String, at url: URL, syncFormat: DatasetSyncFormat) async throws -> AnnotationDataset
     func addImages(_ urls: [URL], to dataset: AnnotationDataset) async throws -> AnnotationDataset
     func save(_ dataset: AnnotationDataset) async throws
     func importDataset(from url: URL) async throws -> AnnotationDataset
+    func mergeDataset(from url: URL, into dataset: AnnotationDataset) async throws -> AnnotationDataset
     func export(_ dataset: AnnotationDataset, to url: URL) async throws
     func validate(_ dataset: AnnotationDataset) async throws -> ValidationSummary
     func runInference(for image: DatasetImage, in dataset: AnnotationDataset) async throws -> [DatasetAnnotation]
     func loadModel(from url: URL) async throws
+    func smartSplit(_ dataset: AnnotationDataset, trainRatio: Double, validationRatio: Double) async throws -> AnnotationDataset
+}
+
+extension DatasetApplicationServices {
+    func mergeDataset(from url: URL, into dataset: AnnotationDataset) async throws -> AnnotationDataset {
+        throw DatasetFormatError.unsupported("Merging datasets is not available for this dataset service")
+    }
+
+    func smartSplit(_ dataset: AnnotationDataset, trainRatio: Double, validationRatio: Double) async throws -> AnnotationDataset {
+        var copy = dataset
+        let assignments = SmartSplitPlanner().assignments(images: dataset.images, annotations: dataset.annotations, configuration: .init(trainRatio: trainRatio, validationRatio: validationRatio))
+        for index in copy.images.indices where assignments[copy.images[index].id] != nil {
+            copy.images[index].split = assignments[copy.images[index].id] ?? .unassigned
+        }
+        return copy
+    }
 }
 
 private enum DatasetSyncMetadata {
     static let format = "lightlabel.sync.format"
     static let source = "lightlabel.sync.source"
+    static let task = "lightlabel.sync.task"
     static let yolo = "yolo"
     static let coco = "coco"
 }
@@ -92,36 +120,61 @@ struct LocalDatasetServices: DatasetApplicationServices {
 
     func openDataset(at url: URL) async throws -> AnnotationDataset {
         let persistence = ProjectPersistence(directoryURL: url.appendingPathComponent(".lightlabel"))
-        if let saved = try? await persistence.loadDataset() { return saved.withRootURL(url) }
+        if let saved = try? await persistence.loadDataset() {
+            let hasExternalFormat = FileManager.default.fileExists(atPath: url.appendingPathComponent("data.yaml").path)
+                || FileManager.default.fileExists(atPath: url.appendingPathComponent("dataset.yaml").path)
+                || !Self.cocoJSONFiles(in: url).isEmpty
+            let hasMissingImages = saved.images.isEmpty && hasExternalFormat
+                || saved.images.contains { !FileManager.default.fileExists(atPath: Self.resolvedImageURL($0, root: url).path) }
+            if !hasMissingImages { return saved.withRootURL(url) }
+        }
         if FileManager.default.fileExists(atPath: url.appendingPathComponent("data.yaml").path) {
             return try YOLOImporter().importDataset(at: url).dataset
                 .withRootURL(url)
                 .withSyncMetadata(format: DatasetSyncMetadata.yolo, source: url.path)
         }
-        let candidates = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil).filter { $0.pathExtension.lowercased() == "json" }
-        guard let json = candidates.first else { throw DatasetFormatError.unreadableFile("data.yaml or COCO JSON") }
-        return try COCOImporter().importDataset(at: json, imageRoot: url).dataset
+        let candidates = Self.cocoJSONFiles(in: url)
+        guard let first = candidates.first else { throw DatasetFormatError.unreadableFile("data.yaml or COCO JSON") }
+        var imported = try COCOImporter().importDataset(at: first, imageRoot: url).dataset
+        for json in candidates.dropFirst() {
+            let next = try COCOImporter().importDataset(at: json, imageRoot: url).dataset
+            imported = Self.combined(imported, with: next, name: url.lastPathComponent)
+        }
+        let source = candidates.count == 1 ? first.path : url.appendingPathComponent("annotations.json").path
+        return imported
             .withRootURL(url)
-            .withSyncMetadata(format: DatasetSyncMetadata.coco, source: json.path)
+            .withSyncMetadata(format: DatasetSyncMetadata.coco, source: source)
     }
 
-    func createDataset(named name: String, at url: URL) async throws -> AnnotationDataset {
+    func createDataset(named name: String, at url: URL, syncFormat: DatasetSyncFormat) async throws -> AnnotationDataset {
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        let dataset = AnnotationDataset(name: name).withRootURL(url)
+        let dataset = AnnotationDataset(name: name)
+            .withRootURL(url)
+            .withSyncMetadata(format: syncFormat.storageFormat, source: syncFormat == .coco ? url.appendingPathComponent("annotations.json").path : url.path, task: syncFormat.yoloTask)
+        if syncFormat != .coco {
+            for split in [DatasetSplit.train, .validation, .test] {
+                try FileManager.default.createDirectory(at: url.appendingPathComponent("images/\(split.yoloName)"), withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(at: url.appendingPathComponent("labels/\(split.yoloName)"), withIntermediateDirectories: true)
+            }
+        } else {
+            try FileManager.default.createDirectory(at: url.appendingPathComponent("images"), withIntermediateDirectories: true)
+        }
         try await ProjectPersistence(directoryURL: url.appendingPathComponent(".lightlabel")).save(dataset)
+        try synchronizeExternalDataset(dataset)
         return dataset
     }
 
     func addImages(_ urls: [URL], to dataset: AnnotationDataset) async throws -> AnnotationDataset {
         guard let root = dataset.rootURL else { throw DatasetFormatError.invalidData("Dataset has no root folder") }
-        let directory = root.appendingPathComponent("images")
+        let isYOLO = dataset.metadata[DatasetSyncMetadata.format] == DatasetSyncMetadata.yolo
+        let directory = root.appendingPathComponent(isYOLO ? "images/train" : "images")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var updated = dataset
         for source in urls {
             let destination = directory.appendingPathComponent(source.lastPathComponent)
             if !FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.copyItem(at: source, to: destination) }
             guard let size = Self.imageSize(at: destination) else { continue }
-            let relativePath = "images/\(destination.lastPathComponent)"
+            let relativePath = isYOLO ? "images/train/\(destination.lastPathComponent)" : "images/\(destination.lastPathComponent)"
             guard !updated.images.contains(where: { $0.relativePath == relativePath }) else { continue }
             updated.images.append(.init(fileName: destination.lastPathComponent, relativePath: relativePath, size: size))
         }
@@ -135,14 +188,90 @@ struct LocalDatasetServices: DatasetApplicationServices {
     }
 
     func importDataset(from url: URL) async throws -> AnnotationDataset {
+        if Self.isDirectory(url) {
+            return try await openDataset(at: url)
+        }
         if url.pathExtension.lowercased() == "json" {
-            return try COCOImporter().importDataset(at: url, imageRoot: url.deletingLastPathComponent()).dataset
-                .withRootURL(url.deletingLastPathComponent())
+            let (imported, imageRoot) = try Self.importCOCOFile(at: url)
+            return imported
+                .withRootURL(imageRoot)
                 .withSyncMetadata(format: DatasetSyncMetadata.coco, source: url.path)
         }
-        return try YOLOImporter().importDataset(at: url).dataset
-            .withRootURL(url)
-            .withSyncMetadata(format: DatasetSyncMetadata.yolo, source: url.path)
+        if ["yaml", "yml"].contains(url.pathExtension.lowercased()) {
+            let root = url.deletingLastPathComponent()
+            return try YOLOImporter().importDataset(at: root).dataset
+                .withRootURL(root)
+                .withSyncMetadata(format: DatasetSyncMetadata.yolo, source: root.path)
+        }
+        throw DatasetFormatError.unsupported("Choose a dataset folder, data.yaml, or COCO JSON file")
+    }
+
+    func mergeDataset(from url: URL, into dataset: AnnotationDataset) async throws -> AnnotationDataset {
+        guard let targetRoot = dataset.rootURL else { throw DatasetFormatError.invalidData("Dataset has no root folder") }
+        let imported = try await importDataset(from: url)
+        guard let sourceRoot = imported.rootURL else { throw DatasetFormatError.invalidData("Imported dataset has no root folder") }
+        guard !imported.images.isEmpty else {
+            throw DatasetFormatError.invalidData("The imported dataset contains no readable images. Check its image folders and data.yaml paths.")
+        }
+
+        let targetIsYOLO = dataset.metadata[DatasetSyncMetadata.format] == DatasetSyncMetadata.yolo
+        let sourceImages = imported.images.map { image in
+            (image: image, url: Self.resolvedImageURL(image, root: sourceRoot))
+        }
+        let missingImages = sourceImages.filter { !FileManager.default.fileExists(atPath: $0.url.path) }
+        guard missingImages.isEmpty else {
+            let examples = missingImages.prefix(3).map { $0.image.fileName }.joined(separator: ", ")
+            throw DatasetFormatError.invalidData("Could not find \(missingImages.count) source image file(s): \(examples)")
+        }
+
+        var result = dataset
+        var categoryMap: [UUID: UUID] = [:]
+        for category in imported.categories {
+            if let existing = result.categories.first(where: { $0.name.caseInsensitiveCompare(category.name) == .orderedSame }) {
+                categoryMap[category.id] = existing.id
+            } else {
+                var copy = category
+                copy.id = UUID()
+                copy.sourceID = nil
+                result.categories.append(copy)
+                categoryMap[category.id] = copy.id
+            }
+        }
+
+        var imageMap: [UUID: UUID] = [:]
+        for (image, sourceURL) in sourceImages {
+            let split = image.split == .unassigned ? DatasetSplit.train : image.split
+            let directory = targetIsYOLO ? "images/\(split.yoloName)" : "images/imported"
+            try FileManager.default.createDirectory(at: targetRoot.appendingPathComponent(directory), withIntermediateDirectories: true)
+            var relativePath = "\(directory)/\(image.fileName)"
+            var destination = targetRoot.appendingPathComponent(relativePath)
+            if result.images.contains(where: { $0.relativePath == relativePath }) || FileManager.default.fileExists(atPath: destination.path) {
+                let stem = destination.deletingPathExtension().lastPathComponent
+                let ext = destination.pathExtension
+                relativePath = "\(directory)/\(stem)-\(UUID().uuidString.prefix(8)).\(ext)"
+                destination = targetRoot.appendingPathComponent(relativePath)
+            }
+            try FileManager.default.copyItem(at: sourceURL, to: destination)
+            var copy = image
+            copy.id = UUID()
+            copy.relativePath = relativePath
+            copy.fileName = destination.lastPathComponent
+            if targetIsYOLO, copy.split == .unassigned { copy.split = .train }
+            copy.sourceID = nil
+            result.images.append(copy)
+            imageMap[image.id] = copy.id
+        }
+
+        for annotation in imported.annotations {
+            guard let imageID = imageMap[annotation.imageID], let categoryID = categoryMap[annotation.categoryID] else { continue }
+            var copy = annotation
+            copy.id = UUID()
+            copy.imageID = imageID
+            copy.categoryID = categoryID
+            copy.sourceID = nil
+            result.annotations.append(copy)
+        }
+        return result
     }
 
     func export(_ dataset: AnnotationDataset, to url: URL) async throws {
@@ -160,12 +289,48 @@ struct LocalDatasetServices: DatasetApplicationServices {
         let sourceURL = URL(fileURLWithPath: source)
         switch format {
         case DatasetSyncMetadata.yolo:
-            _ = try YOLOExporter().export(dataset, to: sourceURL, task: .automatic)
+            let task = dataset.metadata[DatasetSyncMetadata.task].flatMap(YOLOTask.init(rawValue:)) ?? .automatic
+            _ = try YOLOExporter().export(dataset, to: sourceURL, task: task)
         case DatasetSyncMetadata.coco:
             _ = try COCOExporter().export(dataset, to: sourceURL)
         default:
             break
         }
+    }
+
+    func smartSplit(_ dataset: AnnotationDataset, trainRatio: Double, validationRatio: Double) async throws -> AnnotationDataset {
+        var signatures: [UUID: UInt64] = [:]
+        if let root = dataset.rootURL {
+            // ImageLoader already bounds actual decodes. Batching the task
+            // group as well avoids creating one waiting task per image for
+            // very large datasets.
+            let batchSize = 64
+            for start in stride(from: 0, to: dataset.images.count, by: batchSize) {
+                let end = min(start + batchSize, dataset.images.count)
+                let batch = Array(dataset.images[start..<end])
+                await withTaskGroup(of: (UUID, UInt64)?.self) { group in
+                    for image in batch {
+                        let url = root.appendingPathComponent(image.relativePath)
+                        group.addTask {
+                            guard FileManager.default.fileExists(atPath: url.path),
+                                  let thumbnail = try? await ImageLoader.shared.thumbnail(at: url, maximumPixelSize: 64, appliesOrientation: false),
+                                  let signature = SmartSplitPlanner.perceptualSignature(thumbnail) else { return nil }
+                            return (image.id, signature)
+                        }
+                    }
+                    for await result in group {
+                        if let result { signatures[result.0] = result.1 }
+                    }
+                }
+            }
+        }
+        let configuration = SmartSplitConfiguration(trainRatio: trainRatio, validationRatio: validationRatio)
+        let assignments = SmartSplitPlanner().assignments(images: dataset.images, annotations: dataset.annotations, signatures: signatures, configuration: configuration)
+        var result = dataset
+        for index in result.images.indices where assignments[result.images[index].id] != nil {
+            result.images[index].split = assignments[result.images[index].id] ?? .unassigned
+        }
+        return result
     }
 
     func validate(_ dataset: AnnotationDataset) async throws -> ValidationSummary {
@@ -189,6 +354,121 @@ struct LocalDatasetServices: DatasetApplicationServices {
     private static func imageSize(at url: URL) -> PixelSize? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil), let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any], let width = properties[kCGImagePropertyPixelWidth] as? Int, let height = properties[kCGImagePropertyPixelHeight] as? Int else { return nil }
         return .init(width: width, height: height)
+    }
+
+    private static func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+    }
+
+    private static func cocoJSONFiles(in root: URL) -> [URL] {
+        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else { return [] }
+        return enumerator.compactMap { item in
+            guard let url = item as? URL,
+                  url.pathExtension.lowercased() == "json",
+                  !url.path.contains("/.lightlabel/") else { return nil }
+            return url
+        }.filter { url in
+            guard let data = try? Data(contentsOf: url) else { return false }
+            guard let probe = try? JSONDecoder().decode(COCOProbe.self, from: data) else { return false }
+            return probe.images != nil && probe.annotations != nil && probe.categories != nil
+        }.sorted { $0.path < $1.path }
+    }
+
+    private static func importCOCOFile(at url: URL) throws -> (dataset: AnnotationDataset, imageRoot: URL) {
+        let parent = url.deletingLastPathComponent()
+        var candidates: [URL] = []
+        var current = parent
+        for _ in 0..<8 {
+            candidates.append(current)
+            let next = current.deletingLastPathComponent()
+            if next.path == current.path { break }
+            current = next
+        }
+
+        var best: (dataset: AnnotationDataset, root: URL, resolvedImages: Int)?
+        for root in candidates {
+            guard let imported = try? COCOImporter().importDataset(at: url, imageRoot: root).dataset else { continue }
+            let resolvedImages = imported.images.count { image in
+                FileManager.default.fileExists(atPath: resolvedImageURL(image, root: root).path)
+            }
+            if best == nil || resolvedImages > best!.resolvedImages {
+                best = (imported, root, resolvedImages)
+            }
+            if resolvedImages == imported.images.count, !imported.images.isEmpty { break }
+        }
+
+        if let best { return (best.dataset, best.root) }
+        return (try COCOImporter().importDataset(at: url, imageRoot: parent).dataset, parent)
+    }
+
+    private static func combined(_ first: AnnotationDataset, with second: AnnotationDataset, name: String) -> AnnotationDataset {
+        var result = first
+        var categoryMap: [UUID: UUID] = [:]
+        for category in second.categories {
+            if let existing = result.categories.first(where: { $0.name.caseInsensitiveCompare(category.name) == .orderedSame }) {
+                categoryMap[category.id] = existing.id
+            } else {
+                var copy = category
+                copy.id = UUID()
+                result.categories.append(copy)
+                categoryMap[category.id] = copy.id
+            }
+        }
+        var imageMap: [UUID: UUID] = [:]
+        for image in second.images {
+            if let existing = result.images.first(where: { $0.relativePath == image.relativePath }) {
+                imageMap[image.id] = existing.id
+                continue
+            }
+            var copy = image
+            copy.id = UUID()
+            result.images.append(copy)
+            imageMap[image.id] = copy.id
+        }
+        for annotation in second.annotations {
+            guard let imageID = imageMap[annotation.imageID], let categoryID = categoryMap[annotation.categoryID] else { continue }
+            var copy = annotation
+            copy.id = UUID()
+            copy.imageID = imageID
+            copy.categoryID = categoryID
+            result.annotations.append(copy)
+        }
+        result.name = name
+        return result
+    }
+
+    private static func resolvedImageURL(_ image: DatasetImage, root: URL) -> URL {
+        let path = image.relativePath.hasPrefix("/") ? URL(fileURLWithPath: image.relativePath) : root.appendingPathComponent(image.relativePath)
+        if FileManager.default.fileExists(atPath: path.path) { return path }
+        let fallback = root.appendingPathComponent(image.fileName)
+        if FileManager.default.fileExists(atPath: fallback.path) { return fallback }
+        if let match = Self.imageFiles(in: root).first(where: { $0.lastPathComponent.caseInsensitiveCompare(image.fileName) == .orderedSame }) {
+            return match
+        }
+        return path
+    }
+
+    private static func imageFiles(in root: URL) -> [URL] {
+        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return [] }
+        return enumerator.compactMap { item in
+            guard let file = item as? URL,
+                  (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                  ["jpg", "jpeg", "png", "heic", "tif", "tiff", "bmp", "webp"].contains(file.pathExtension.lowercased()) else { return nil }
+            return file
+        }
+    }
+
+    private struct COCOProbe: Decodable {
+        let images: [ProbeImage]?
+        let annotations: [ProbeAnnotation]?
+        let categories: [ProbeCategory]?
+        struct ProbeImage: Decodable { let id: Int?; let fileName: String?
+            enum CodingKeys: String, CodingKey { case id, fileName = "file_name" }
+        }
+        struct ProbeAnnotation: Decodable { let id: Int?
+            enum CodingKeys: String, CodingKey { case id }
+        }
+        struct ProbeCategory: Decodable { let id: Int? }
     }
 }
 
@@ -237,6 +517,41 @@ enum ExportChoiceDialog {
     }
 }
 
+private final class DatasetFormatAccessoryView: NSView {
+    private let formatPicker = NSPopUpButton()
+
+    var selectedFormat: DatasetSyncFormat {
+        switch formatPicker.indexOfSelectedItem {
+        case 1: .yoloSegmentation
+        case 2: .coco
+        default: .yoloDetection
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        let label = NSTextField(labelWithString: "Auto-sync format:")
+        formatPicker.addItems(withTitles: DatasetSyncFormat.allCases.map(\.title))
+        formatPicker.selectItem(at: 0)
+
+        let stack = NSStackView(views: [label, formatPicker])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            label.widthAnchor.constraint(equalToConstant: 125)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
 extension AnnotationDataset {
     func withRootURL(_ url: URL) -> Self {
         var copy = self
@@ -244,10 +559,11 @@ extension AnnotationDataset {
         return copy
     }
 
-    func withSyncMetadata(format: String, source: String) -> Self {
+    func withSyncMetadata(format: String, source: String, task: YOLOTask? = nil) -> Self {
         var copy = self
         copy.metadata[DatasetSyncMetadata.format] = format
         copy.metadata[DatasetSyncMetadata.source] = source
+        if let task { copy.metadata[DatasetSyncMetadata.task] = task.rawValue }
         return copy
     }
     var rootURL: URL? {
@@ -263,6 +579,7 @@ final class AppModel {
         didSet { rebuildIndexes(); invalidateFilteredImages() }
     }
     var selectedImageID: UUID?
+    var selectedImageIDs: Set<UUID> = []
     var selectedAnnotationID: UUID?
     var selectedCategoryID: UUID?
     var tool = AnnotationTool.select
@@ -270,6 +587,11 @@ final class AppModel {
     var splitFilter = SplitFilter.all { didSet { invalidateFilteredImages() } }
     var statusFilter = StatusFilter.all { didSet { invalidateFilteredImages() } }
     var searchText = "" { didSet { invalidateFilteredImages() } }
+    var imageSortKey = ImageSortKey.name
+    var imageSortAscending = true
+    // Visible revision used by list/grid views to refresh cached row models
+    // only when dataset contents or filters actually changed.
+    private(set) var browserDataRevision = 0
     var includedCategoryIDs: Set<UUID> = [] { didSet { invalidateFilteredImages() } }
     var excludedCategoryIDs: Set<UUID> = [] { didSet { invalidateFilteredImages() } }
     var viewport = CanvasViewport()
@@ -294,6 +616,11 @@ final class AppModel {
     @ObservationIgnored private var filterRevision = 0
     @ObservationIgnored private var cachedFilterRevision = -1
     @ObservationIgnored private var cachedFilteredImages: [DatasetImage] = []
+    @ObservationIgnored private var cachedBrowserRevision = -1
+    @ObservationIgnored private var cachedBrowserSortKey = ImageSortKey.name
+    @ObservationIgnored private var cachedBrowserSortAscending = true
+    @ObservationIgnored private var cachedBrowserImages: [DatasetImage] = []
+    @ObservationIgnored private var selectionAnchorImageID: UUID?
 
     init(services: any DatasetApplicationServices = LocalDatasetServices()) {
         self.services = services
@@ -319,30 +646,74 @@ final class AppModel {
             cachedFilterRevision = filterRevision
             return []
         }
+        let query = searchText
+        let includedCategoryIDs = self.includedCategoryIDs
+        let excludedCategoryIDs = self.excludedCategoryIDs
         let result = dataset.images.filter { image in
-            let splitMatches = splitFilter == .all || String(describing: image.split).localizedCaseInsensitiveContains(splitFilter.rawValue)
+            let splitMatches: Bool
+            switch splitFilter {
+            case .all: splitMatches = true
+            case .train: splitMatches = image.split == .train
+            case .validation: splitMatches = image.split == .validation
+            case .test: splitMatches = image.split == .test
+            }
+            guard splitMatches else { return false }
+
             let imageAnnotations = annotationsByImageID[image.id] ?? []
-            let review = String(describing: image.reviewState)
             let statusMatches: Bool = switch statusFilter {
             case .all: true
             case .unannotated: imageAnnotations.isEmpty
             case .annotated: !imageAnnotations.isEmpty
-            case .reviewed: review.localizedCaseInsensitiveContains("reviewed") && !review.localizedCaseInsensitiveContains("unreviewed")
             case .suggestions: imageAnnotations.contains { $0.source == .aiSuggestion }
             }
-            let queryMatches = searchText.isEmpty
-                || image.fileName.localizedCaseInsensitiveContains(searchText)
+            guard statusMatches else { return false }
+
+            let queryMatches = query.isEmpty
+                || image.fileName.localizedCaseInsensitiveContains(query)
                 || imageAnnotations.contains { annotation in
-                    categoryNamesByID[annotation.categoryID]?.localizedCaseInsensitiveContains(searchText) == true
+                    categoryNamesByID[annotation.categoryID]?.localizedCaseInsensitiveContains(query) == true
                 }
-            let imageCategoryIDs = Set(imageAnnotations.map { $0.categoryID })
-            let classMatches = !imageCategoryIDs.isDisjoint(with: excludedCategoryIDs)
-                ? false
-                : (includedCategoryIDs.isEmpty || includedCategoryIDs.isSubset(of: imageCategoryIDs))
-            return splitMatches && statusMatches && queryMatches && classMatches
+            guard queryMatches else { return false }
+
+            guard !includedCategoryIDs.isEmpty || !excludedCategoryIDs.isEmpty else { return true }
+            let imageCategoryIDs = Set(imageAnnotations.lazy.map(\.categoryID))
+            return imageCategoryIDs.isDisjoint(with: excludedCategoryIDs)
+                && (includedCategoryIDs.isEmpty || includedCategoryIDs.isSubset(of: imageCategoryIDs))
         }
         cachedFilteredImages = result
         cachedFilterRevision = filterRevision
+        return result
+    }
+
+    var browserImages: [DatasetImage] {
+        if cachedBrowserRevision == filterRevision,
+           cachedBrowserSortKey == imageSortKey,
+           cachedBrowserSortAscending == imageSortAscending {
+            return cachedBrowserImages
+        }
+        let result = filteredImages.sorted { lhs, rhs in
+            let comparison: ComparisonResult
+            switch imageSortKey {
+            case .name: comparison = lhs.fileName.localizedStandardCompare(rhs.fileName)
+            case .size:
+                let left = Int64(lhs.size.width) * Int64(lhs.size.height)
+                let right = Int64(rhs.size.width) * Int64(rhs.size.height)
+                comparison = left == right ? .orderedSame : (left < right ? .orderedAscending : .orderedDescending)
+            case .split:
+                let order: [DatasetSplit: Int] = [.train: 0, .validation: 1, .test: 2, .unassigned: 3]
+                let left = order[lhs.split, default: 99], right = order[rhs.split, default: 99]
+                comparison = left == right ? .orderedSame : (left < right ? .orderedAscending : .orderedDescending)
+            case .labels:
+                let left = annotationCount(for: lhs.id), right = annotationCount(for: rhs.id)
+                comparison = left == right ? .orderedSame : (left < right ? .orderedAscending : .orderedDescending)
+            }
+            if comparison == .orderedSame { return lhs.id.uuidString < rhs.id.uuidString }
+            return imageSortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+        }
+        cachedBrowserImages = result
+        cachedBrowserRevision = filterRevision
+        cachedBrowserSortKey = imageSortKey
+        cachedBrowserSortAscending = imageSortAscending
         return result
     }
 
@@ -396,9 +767,12 @@ final class AppModel {
         panel.prompt = "Create"
         panel.nameFieldStringValue = "Untitled Dataset"
         panel.canCreateDirectories = true
+        let formatAccessory = DatasetFormatAccessoryView(frame: NSRect(x: 0, y: 0, width: 320, height: 34))
+        panel.accessoryView = formatAccessory
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        let format = formatAccessory.selectedFormat
         perform(title: "Creating dataset") { [services] in
-            try await services.createDataset(named: url.lastPathComponent, at: url)
+            try await services.createDataset(named: url.lastPathComponent, at: url, syncFormat: format)
         } completion: { [weak self] dataset in
             self?.replaceDataset(dataset)
         }
@@ -431,6 +805,26 @@ final class AppModel {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         perform(title: "Importing dataset") { [services] in try await services.importDataset(from: url) } completion: { [weak self] dataset in
             self?.replaceDataset(dataset)
+        }
+    }
+
+    func importIntoCurrentDataset() {
+        guard let dataset else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Import Into Current Dataset"
+        panel.prompt = "Import"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        perform(title: "Merging dataset") { [services] in
+            try await services.mergeDataset(from: url, into: dataset)
+        } completion: { [weak self] merged in
+            self?.dataset = merged
+            self?.selectedImageID = merged.images.last?.id
+            self?.selectedImageIDs = merged.images.last.map { [$0.id] } ?? []
+            self?.selectedCategoryID = merged.categories.first?.id
+            self?.markDirty()
         }
     }
 
@@ -486,7 +880,64 @@ final class AppModel {
 
     func selectImage(_ id: UUID?) {
         selectedImageID = id
+        selectedImageIDs = id.map { [$0] } ?? []
+        selectionAnchorImageID = id
         selectedAnnotationID = nil
+    }
+
+    func selectImage(_ id: UUID, modifiers: NSEvent.ModifierFlags) {
+        let images = browserImages
+        let command = modifiers.contains(.command)
+        let shift = modifiers.contains(.shift)
+        if shift, let anchor = selectionAnchorImageID,
+           let start = images.firstIndex(where: { $0.id == anchor }),
+           let end = images.firstIndex(where: { $0.id == id }) {
+            let range = Set(images[min(start, end)...max(start, end)].map(\.id))
+            selectedImageIDs.formUnion(range)
+        } else if command {
+            if selectedImageIDs.contains(id) { selectedImageIDs.remove(id) } else { selectedImageIDs.insert(id) }
+        } else {
+            selectedImageIDs = [id]
+        }
+        selectedImageID = id
+        selectionAnchorImageID = id
+        selectedAnnotationID = nil
+    }
+
+    func selectImages(_ ids: Set<UUID>) {
+        let added = ids.subtracting(selectedImageIDs).first
+        selectedImageIDs = ids
+        selectedImageID = added ?? selectedImageID.flatMap { ids.contains($0) ? $0 : nil } ?? ids.first
+        selectionAnchorImageID = selectedImageID
+        selectedAnnotationID = nil
+    }
+
+    func toggleSort(_ key: ImageSortKey) {
+        if imageSortKey == key { imageSortAscending.toggle() } else { imageSortKey = key; imageSortAscending = true }
+        invalidateFilteredImages()
+    }
+
+    func setSplit(_ split: DatasetSplit, for ids: Set<UUID>? = nil) {
+        guard var dataset else { return }
+        let targetIDs = ids ?? selectedImageIDs
+        guard !targetIDs.isEmpty else { return }
+        var changed = false
+        for index in dataset.images.indices where targetIDs.contains(dataset.images[index].id) {
+            if dataset.images[index].split != split { dataset.images[index].split = split; changed = true }
+        }
+        guard changed else { return }
+        self.dataset = dataset
+        markDirty()
+    }
+
+    func smartSplit(trainRatio: Double, validationRatio: Double) {
+        guard let dataset else { return }
+        perform(title: "Smart splitting dataset") { [services] in
+            try await services.smartSplit(dataset, trainRatio: trainRatio, validationRatio: validationRatio)
+        } completion: { [weak self] result in
+            self?.dataset = result
+            self?.markDirty()
+        }
     }
 
     func navigate(_ offset: Int) {
@@ -647,6 +1098,53 @@ final class AppModel {
         markDirty()
     }
 
+    func deleteSelectedImages() {
+        deleteImages(ids: selectedImageIDs)
+    }
+
+    func deleteImages(ids: Set<UUID>, registeringUndo: Bool = true) {
+        guard let dataset, !ids.isEmpty else { return }
+        let removedImages = dataset.images.filter { ids.contains($0.id) }
+        guard !removedImages.isEmpty else { return }
+        let root = dataset.rootURL
+        perform(title: "Moving \(removedImages.count) \(removedImages.count == 1 ? "image" : "images") to Trash") { [removedImages, root] in
+            try await Task.detached(priority: .userInitiated) {
+                guard let root else { return }
+                for image in removedImages {
+                    try Task.checkCancellation()
+                    let imageURL = root.appendingPathComponent(image.relativePath)
+                    if FileManager.default.fileExists(atPath: imageURL.path) {
+                        try FileManager.default.trashItem(at: imageURL, resultingItemURL: nil)
+                    }
+                }
+            }.value
+        } completion: { [weak self, removedImages, root] in
+            guard let self, self.dataset?.rootURL == root else { return }
+            self.finishDeletingImages(removedImages, registeringUndo: registeringUndo)
+        }
+    }
+
+    private func finishDeletingImages(_ removedImages: [DatasetImage], registeringUndo: Bool) {
+        guard var dataset else { return }
+        let removedIDs = Set(removedImages.map(\.id))
+        let removedAnnotations = dataset.annotations.filter { removedIDs.contains($0.imageID) }
+        dataset.images.removeAll { removedIDs.contains($0.id) }
+        dataset.annotations.removeAll { removedIDs.contains($0.imageID) }
+        self.dataset = dataset
+        selectedImageIDs.subtract(removedIDs)
+        if let selectedImageID, removedIDs.contains(selectedImageID) {
+            let next = browserImages.first
+            self.selectedImageID = next?.id
+            if let next { selectedImageIDs.insert(next.id) }
+        }
+        if registeringUndo {
+            registerUndo(action: removedImages.count == 1 ? "Delete Image" : "Delete Images") { model in
+                model.restoreImages(removedImages, annotations: removedAnnotations)
+            }
+        }
+        markDirty()
+    }
+
     func restoreImage(_ image: DatasetImage, annotations: [DatasetAnnotation]) {
         guard var dataset else { return }
         dataset.images.append(image)
@@ -654,6 +1152,19 @@ final class AppModel {
         self.dataset = dataset
         selectImage(image.id)
         registerUndo(action: "Delete Image") { model in model.deleteImage(id: image.id, registeringUndo: false) }
+        markDirty()
+    }
+
+    func restoreImages(_ images: [DatasetImage], annotations: [DatasetAnnotation]) {
+        guard var dataset else { return }
+        dataset.images.append(contentsOf: images)
+        dataset.annotations.append(contentsOf: annotations)
+        self.dataset = dataset
+        selectedImageID = images.first?.id
+        selectedImageIDs = Set(images.map(\.id))
+        registerUndo(action: images.count == 1 ? "Delete Image" : "Delete Images") { model in
+            model.deleteImages(ids: Set(images.map(\.id)), registeringUndo: false)
+        }
         markDirty()
     }
 
@@ -692,13 +1203,6 @@ final class AppModel {
         excludedCategoryIDs.removeAll()
     }
 
-    func setReviewState(_ state: ReviewState) {
-        guard var dataset, let id = selectedImageID, let index = dataset.images.firstIndex(where: { $0.id == id }) else { return }
-        dataset.images[index].reviewState = state
-        self.dataset = dataset
-        markDirty()
-    }
-
     func loadModel() {
         let panel = NSOpenPanel()
         panel.title = "Load Core ML Model"
@@ -729,6 +1233,8 @@ final class AppModel {
     private func replaceDataset(_ dataset: AnnotationDataset) {
         self.dataset = dataset
         selectedImageID = dataset.images.first?.id
+        selectedImageIDs = dataset.images.first.map { [$0.id] } ?? []
+        selectionAnchorImageID = selectedImageID
         selectedCategoryID = dataset.categories.first?.id
         selectedAnnotationID = nil
         includedCategoryIDs.removeAll()
@@ -771,6 +1277,8 @@ final class AppModel {
 
     private func invalidateFilteredImages() {
         filterRevision &+= 1
+        browserDataRevision &+= 1
+        cachedBrowserRevision = -1
     }
 
     private func registerUndo(action: String, operation: @escaping @MainActor (AppModel) -> Void) {

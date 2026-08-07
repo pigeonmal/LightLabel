@@ -1,5 +1,36 @@
 import Foundation
 
+public enum DatasetSyncFormat: String, Codable, CaseIterable, Identifiable, Sendable {
+    case yoloDetection
+    case yoloSegmentation
+    case coco
+
+    public var id: Self { self }
+
+    public var title: String {
+        switch self {
+        case .yoloDetection: "YOLO Detection"
+        case .yoloSegmentation: "YOLO Segmentation"
+        case .coco: "COCO JSON"
+        }
+    }
+
+    public var storageFormat: String {
+        switch self {
+        case .yoloDetection, .yoloSegmentation: "yolo"
+        case .coco: "coco"
+        }
+    }
+
+    public var yoloTask: YOLOTask? {
+        switch self {
+        case .yoloDetection: .detection
+        case .yoloSegmentation: .segmentation
+        case .coco: nil
+        }
+    }
+}
+
 public struct DatasetFormatWarning: Codable, Hashable, Sendable, Identifiable {
     public var id: String { "\(file ?? ""):\(line.map(String.init) ?? ""):\(message)" }
     public let message: String
