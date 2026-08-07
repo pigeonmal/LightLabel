@@ -5,19 +5,55 @@ import SwiftUI
 struct DatasetGrid: View {
     @Bindable var model: AppModel
     private let columns = [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 16)]
+    @State private var imageIDs: [UUID] = []
+    @State private var sortTask: Task<Void, Never>?
 
     var body: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 16) {
-                ForEach(model.browserImages, id: \.id) { image in
-                    ImageCard(model: model, image: image)
+                ForEach(imageIDs, id: \.self) { id in
+                    if let image = model.image(for: id) {
+                        ImageCard(model: model, image: image)
+                    }
                 }
             }
             .padding(18)
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .overlay { if model.filteredImages.isEmpty { ContentUnavailableView.search(text: model.searchText) } }
+        .overlay { if model.filteredImageCount == 0 { ContentUnavailableView.search(text: model.searchText) } }
         .navigationTitle(model.dataset?.name ?? "Dataset")
+        .task(id: gridTaskID) {
+            rebuildImageOrder()
+        }
+        .onDisappear {
+            sortTask?.cancel()
+        }
+    }
+
+    private var gridTaskID: String {
+        "(model.browserDataRevision)-(model.imageSortKey.rawValue)-(model.imageSortAscending)"
+    }
+
+    private func rebuildImageOrder() {
+        sortTask?.cancel()
+        let snapshots = model.filteredImageSnapshots()
+        let descriptor = ImageSortDescriptor(key: model.imageSortKey, ascending: model.imageSortAscending)
+        let worker = Task.detached(priority: .userInitiated) {
+            try await cancellableMergeSort(snapshots, by: descriptor.compare)
+        }
+        sortTask = Task { @MainActor in
+            do {
+                let sorted = try await withTaskCancellationHandler {
+                    try await worker.value
+                } onCancel: {
+                    worker.cancel()
+                }
+                guard !Task.isCancelled else { return }
+                imageIDs = sorted.map(\.id)
+            } catch {
+                // A superseded sort is expected during rapid filtering/sorting.
+            }
+        }
     }
 }
 
@@ -31,13 +67,13 @@ struct DatasetList: View {
         Table(tableRows, selection: Binding<Set<UUID>>(get: { model.selectedImageIDs }, set: { ids in model.selectImages(ids) }), sortOrder: tableSortOrder) {
             TableColumn("Name", value: \.fileName) { row in
                 HStack(spacing: 10) {
-                    ThumbnailView(url: model.imageURL(for: row.image), maxPixelSize: 64)
+                    ThumbnailView(url: model.imageURL(forRelativePath: row.relativePath), maxPixelSize: 64)
                         .frame(width: 52, height: 38).clipShape(RoundedRectangle(cornerRadius: 4))
                     Text(row.fileName).lineLimit(1)
                 }
             }
             TableColumn("Size", value: \.pixelArea) { row in
-                Text("\(row.image.size.width) × \(row.image.size.height)")
+                Text("\(row.width) × \(row.height)")
                     .foregroundStyle(.secondary).monospacedDigit()
             }
             TableColumn("Split", value: \.splitRank) { row in Text(row.splitTitle) }
@@ -50,7 +86,7 @@ struct DatasetList: View {
         .transaction { transaction in transaction.animation = nil }
         .contextMenu(forSelectionType: UUID.self) { ids in
             if !ids.isEmpty {
-                if let id = ids.first, let image = model.dataset?.images.first(where: { $0.id == id }), let url = model.imageURL(for: image) {
+                if let id = ids.first, let image = model.image(for: id), let url = model.imageURL(for: image) {
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                 }
                 Menu("Set Split") {
@@ -66,7 +102,7 @@ struct DatasetList: View {
             model.selectImages(ids)
             model.browserMode = .workspace
         }
-        .overlay { if model.filteredImages.isEmpty { ContentUnavailableView.search(text: model.searchText) } }
+        .overlay { if model.filteredImageCount == 0 { ContentUnavailableView.search(text: model.searchText) } }
         .navigationTitle(model.dataset?.name ?? "Dataset")
         .task(id: model.browserDataRevision) {
             rebuildTableRows()
@@ -87,7 +123,7 @@ struct DatasetList: View {
     }
 
     private func rebuildTableRows() {
-        let rows = model.filteredImages.map { DatasetListRow(image: $0, labelCount: model.annotationCount(for: $0.id)) }
+        let rows = model.filteredImageSnapshots().map { DatasetListRow(snapshot: $0, labelCount: model.annotationCount(for: $0.id)) }
         scheduleSort(Self.sortDescriptor(for: sortOrder), rows: rows)
     }
 
@@ -95,11 +131,23 @@ struct DatasetList: View {
         sortingTask?.cancel()
         let input = rows ?? tableRows
         sortingTask = Task { @MainActor in
-            let sorted = await Task.detached(priority: .userInitiated) {
-                input.sorted(using: descriptor)
-            }.value
-            guard !Task.isCancelled else { return }
-            tableRows = sorted
+            let worker = Task.detached(priority: .userInitiated) {
+                try await input.sorted(using: descriptor)
+            }
+            do {
+                let sorted = try await withTaskCancellationHandler {
+                    try await worker.value
+                } onCancel: {
+                    worker.cancel()
+                }
+                guard !Task.isCancelled else { return }
+                tableRows = sorted
+            } catch is CancellationError {
+                // A newer filter or sort request superseded this work.
+            } catch {
+                // Sorting is an in-memory operation; a failed/cancelled sort
+                // should never take down the browser.
+            }
         }
     }
 
@@ -142,35 +190,40 @@ private struct DatasetListSortDescriptor: Sendable, Equatable {
         case .labels:
             result = lhs.labelCount == rhs.labelCount ? .orderedSame : (lhs.labelCount < rhs.labelCount ? .orderedAscending : .orderedDescending)
         }
-        if result == .orderedSame { return lhs.idString < rhs.idString }
+        if result == .orderedSame { return lhs.sourceIndex < rhs.sourceIndex }
         return ascending ? result == .orderedAscending : result == .orderedDescending
     }
 }
 
 private extension Array where Element == DatasetListRow {
-    func sorted(using descriptor: DatasetListSortDescriptor) -> [DatasetListRow] {
-        sorted(by: descriptor.compare)
+    func sorted(using descriptor: DatasetListSortDescriptor) async throws -> [DatasetListRow] {
+        try await cancellableMergeSort(self, by: descriptor.compare)
     }
 }
 
 private struct DatasetListRow: Identifiable, Sendable {
-    let image: DatasetImage
-    let idString: String
+    let id: UUID
     let fileName: String
+    let relativePath: String
+    let width: Int
+    let height: Int
     let pixelArea: Int64
     let splitRank: Int
     let splitTitle: String
     let labelCount: Int
+    let sourceIndex: Int
 
-    var id: UUID { image.id }
-    init(image: DatasetImage, labelCount: Int) {
-        self.image = image
-        self.idString = image.id.uuidString
-        self.fileName = image.fileName
-        self.pixelArea = Int64(image.size.width) * Int64(image.size.height)
-        self.splitRank = Self.rank(for: image.split)
-        self.splitTitle = image.split == .unassigned ? "Unassigned" : image.split.yoloName.capitalized
+    init(snapshot: ImageBrowserSnapshot, labelCount: Int) {
+        self.id = snapshot.id
+        self.fileName = snapshot.fileName
+        self.relativePath = snapshot.relativePath
+        self.width = snapshot.width
+        self.height = snapshot.height
+        self.pixelArea = snapshot.pixelArea
+        self.splitRank = Self.rank(for: snapshot.split)
+        self.splitTitle = snapshot.split == .unassigned ? "Unassigned" : snapshot.split.yoloName.capitalized
         self.labelCount = labelCount
+        self.sourceIndex = snapshot.sourceIndex
     }
 
     private static func rank(for split: DatasetSplit) -> Int {
@@ -195,7 +248,7 @@ private struct ImageCard: View {
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 ZStack(alignment: .topTrailing) {
-                    ThumbnailView(url: model.imageURL(for: image), maxPixelSize: 520)
+                    ThumbnailView(url: model.imageURL(for: image), maxPixelSize: 384)
                         .frame(maxWidth: .infinity).aspectRatio(4 / 3, contentMode: .fit)
                         .background(Color(nsColor: .underPageBackgroundColor))
                         .clipShape(RoundedRectangle(cornerRadius: 7))

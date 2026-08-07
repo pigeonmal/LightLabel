@@ -136,6 +136,26 @@ final class StableIDValidatorPersistenceTests: XCTestCase {
         XCTAssertEqual(assignments.values.count(where: { $0 == .test }), 1)
     }
 
+    func testCancellableMergeSortOrdersLargeLabelSnapshotWithoutMainActorWork() async throws {
+        let snapshots = (0..<20_000).reversed().map { offset in
+            ImageBrowserSnapshot(
+                image: DatasetImage(
+                    id: StableID.make(namespace: "performance-image", components: [String(offset)]),
+                    fileName: "image-(offset).png",
+                    size: .init(width: 640, height: 640)
+                ),
+                labelCount: offset % 23
+            )
+        }
+        let descriptor = ImageSortDescriptor(key: .labels, ascending: true)
+
+        let sorted = try await cancellableMergeSort(snapshots, by: descriptor.compare)
+
+        XCTAssertEqual(sorted.count, snapshots.count)
+        XCTAssertEqual(sorted.map(\.labelCount), sorted.map(\.labelCount).sorted())
+        XCTAssertEqual(Set(sorted.map(\.id)), Set(snapshots.map(\.id)))
+    }
+
     func testMergeFromYOLODataYAMLCopiesImagesAndAnnotations() async throws {
         let directory = try TestSupport.makeTemporaryDirectory()
         defer { TestSupport.removeTemporaryDirectory(directory) }

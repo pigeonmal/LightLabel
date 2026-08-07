@@ -170,7 +170,7 @@ struct DatasetSidebar: View {
                     Section("Statistics") {
                         LabeledContent("Images", value: dataset.images.count.formatted())
                         LabeledContent("Annotations", value: dataset.annotations.count.formatted())
-                        LabeledContent("Showing", value: model.filteredImages.count.formatted())
+                        LabeledContent("Showing", value: model.filteredImageCount.formatted())
                     }
 
                     Section("Dataset") {

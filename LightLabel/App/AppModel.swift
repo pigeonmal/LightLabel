@@ -51,7 +51,7 @@ enum StatusFilter: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
-enum ImageSortKey: String, CaseIterable, Identifiable {
+enum ImageSortKey: String, CaseIterable, Identifiable, Sendable {
     case name = "Name"
     case size = "Size"
     case split = "Split"
@@ -76,6 +76,107 @@ struct OperationProgress: Equatable {
     var title: String
     var completed: Double
     var isCancellable: Bool
+}
+
+struct ImageBrowserSnapshot: Identifiable, Sendable {
+    let id: UUID
+    let fileName: String
+    let relativePath: String
+    let width: Int
+    let height: Int
+    let split: DatasetSplit
+    let labelCount: Int
+    let sourceIndex: Int
+
+    var pixelArea: Int64 { Int64(width) * Int64(height) }
+
+    init(image: DatasetImage, labelCount: Int = 0, sourceIndex: Int = 0) {
+        id = image.id
+        fileName = image.fileName
+        relativePath = image.relativePath
+        width = image.size.width
+        height = image.size.height
+        split = image.split
+        self.labelCount = labelCount
+        self.sourceIndex = sourceIndex
+    }
+}
+
+struct ImageSortDescriptor: Sendable, Equatable {
+    let key: ImageSortKey
+    let ascending: Bool
+
+    func compare(_ lhs: ImageBrowserSnapshot, _ rhs: ImageBrowserSnapshot) -> Bool {
+        let result: ComparisonResult
+        switch key {
+        case .name:
+            result = lhs.fileName.localizedStandardCompare(rhs.fileName)
+        case .size:
+            result = lhs.pixelArea == rhs.pixelArea ? .orderedSame : (lhs.pixelArea < rhs.pixelArea ? .orderedAscending : .orderedDescending)
+        case .split:
+            let left = Self.splitRank(lhs.split)
+            let right = Self.splitRank(rhs.split)
+            result = left == right ? .orderedSame : (left < right ? .orderedAscending : .orderedDescending)
+        case .labels:
+            result = lhs.labelCount == rhs.labelCount ? .orderedSame : (lhs.labelCount < rhs.labelCount ? .orderedAscending : .orderedDescending)
+        }
+        if result == .orderedSame { return lhs.sourceIndex < rhs.sourceIndex }
+        return ascending ? result == .orderedAscending : result == .orderedDescending
+    }
+
+    private static func splitRank(_ split: DatasetSplit) -> Int {
+        switch split {
+        case .train: 0
+        case .validation: 1
+        case .test: 2
+        case .unassigned: 3
+        }
+    }
+}
+
+func cancellableMergeSort<Element: Sendable>(
+    _ values: [Element],
+    by areInIncreasingOrder: @escaping @Sendable (Element, Element) -> Bool
+) async throws -> [Element] {
+    guard values.count > 1 else { return values }
+    var source = values
+    var buffer = values
+    var width = 1
+    while width < values.count {
+        try Task.checkCancellation()
+        var start = 0
+        while start < values.count {
+            let mid = min(start + width, values.count)
+            let end = min(start + width * 2, values.count)
+            var left = start
+            var right = mid
+            var output = start
+            while left < mid && right < end {
+                if areInIncreasingOrder(source[right], source[left]) {
+                    buffer[output] = source[right]
+                    right += 1
+                } else {
+                    buffer[output] = source[left]
+                    left += 1
+                }
+                output += 1
+            }
+            while left < mid {
+                buffer[output] = source[left]
+                left += 1
+                output += 1
+            }
+            while right < end {
+                buffer[output] = source[right]
+                right += 1
+                output += 1
+            }
+            start = end
+        }
+        swap(&source, &buffer)
+        width = width > values.count / 2 ? values.count : width * 2
+    }
+    return source
 }
 
 protocol DatasetApplicationServices: Sendable {
@@ -628,7 +729,10 @@ extension AnnotationDataset {
 @Observable
 final class AppModel {
     var dataset: AnnotationDataset? {
-        didSet { rebuildIndexes(); invalidateFilteredImages() }
+        didSet {
+            if !suppressIndexRebuild { rebuildIndexes() }
+            if !suppressBrowserInvalidation { invalidateFilteredImages() }
+        }
     }
     var selectedImageID: UUID?
     var selectedImageIDs: Set<UUID> = []
@@ -661,19 +765,19 @@ final class AppModel {
     @ObservationIgnored private var autosaveTask: Task<Void, Never>?
     @ObservationIgnored private var operationTask: Task<Void, Never>?
     @ObservationIgnored weak var undoManager: UndoManager?
-    @ObservationIgnored private var imagesByID: [UUID: DatasetImage] = [:]
-    @ObservationIgnored private var annotationsByID: [UUID: DatasetAnnotation] = [:]
-    @ObservationIgnored private var annotationsByImageID: [UUID: [DatasetAnnotation]] = [:]
+    @ObservationIgnored private var suppressIndexRebuild = false
+    @ObservationIgnored private var suppressBrowserInvalidation = false
+    @ObservationIgnored private var imageIndexByID: [UUID: Int] = [:]
+    @ObservationIgnored private var annotationIndexByID: [UUID: Int] = [:]
+    @ObservationIgnored private var annotationIndicesByImageID: [UUID: [Int]] = [:]
+    @ObservationIgnored private var annotationCountsByImageID: [UUID: Int] = [:]
+    @ObservationIgnored private var imageHasSuggestions: Set<UUID> = []
     @ObservationIgnored private var annotationCountsByCategoryID: [UUID: Int] = [:]
     @ObservationIgnored private var categoryNamesByID: [UUID: String] = [:]
     @ObservationIgnored private var tagNamesByID: [UUID: String] = [:]
     @ObservationIgnored private var filterRevision = 0
     @ObservationIgnored private var cachedFilterRevision = -1
-    @ObservationIgnored private var cachedFilteredImages: [DatasetImage] = []
-    @ObservationIgnored private var cachedBrowserRevision = -1
-    @ObservationIgnored private var cachedBrowserSortKey = ImageSortKey.name
-    @ObservationIgnored private var cachedBrowserSortAscending = true
-    @ObservationIgnored private var cachedBrowserImages: [DatasetImage] = []
+    @ObservationIgnored private var cachedFilteredImageIDs: [UUID] = []
     @ObservationIgnored private var selectionAnchorImageID: UUID?
 
     init(services: any DatasetApplicationServices = LocalDatasetServices()) {
@@ -681,22 +785,26 @@ final class AppModel {
     }
 
     var selectedImage: DatasetImage? {
-        selectedImageID.flatMap { imagesByID[$0] }
+        guard let dataset, let selectedImageID, let index = imageIndexByID[selectedImageID], dataset.images.indices.contains(index) else { return nil }
+        return dataset.images[index]
     }
 
     var selectedAnnotation: DatasetAnnotation? {
-        selectedAnnotationID.flatMap { annotationsByID[$0] }
+        guard let dataset, let selectedAnnotationID, let index = annotationIndexByID[selectedAnnotationID], dataset.annotations.indices.contains(index) else { return nil }
+        return dataset.annotations[index]
     }
 
     var annotationsForSelectedImage: [DatasetAnnotation] {
-        guard let selectedImageID else { return [] }
-        return annotationsByImageID[selectedImageID] ?? []
+        guard let dataset, let selectedImageID else { return [] }
+        return (annotationIndicesByImageID[selectedImageID] ?? []).compactMap { index in
+            dataset.annotations.indices.contains(index) ? dataset.annotations[index] : nil
+        }
     }
 
-    var filteredImages: [DatasetImage] {
-        if cachedFilterRevision == filterRevision { return cachedFilteredImages }
+    var filteredImageIDs: [UUID] {
+        if cachedFilterRevision == filterRevision { return cachedFilteredImageIDs }
         guard let dataset else {
-            cachedFilteredImages = []
+            cachedFilteredImageIDs = []
             cachedFilterRevision = filterRevision
             return []
         }
@@ -704,7 +812,7 @@ final class AppModel {
         let tagFilterID = self.tagFilterID
         let includedCategoryIDs = self.includedCategoryIDs
         let excludedCategoryIDs = self.excludedCategoryIDs
-        let result = dataset.images.filter { image in
+        let result = dataset.images.compactMap { image -> UUID? in
             let splitMatches: Bool
             switch splitFilter {
             case .all: splitMatches = true
@@ -712,75 +820,76 @@ final class AppModel {
             case .validation: splitMatches = image.split == .validation
             case .test: splitMatches = image.split == .test
             }
-            guard splitMatches else { return false }
+            guard splitMatches else { return nil }
 
-            if let tagFilterID, !image.tagIDs.contains(tagFilterID) { return false }
+            if let tagFilterID, !image.tagIDs.contains(tagFilterID) { return nil }
 
-            let imageAnnotations = annotationsByImageID[image.id] ?? []
+            let annotationIndices = annotationIndicesByImageID[image.id] ?? []
             let statusMatches: Bool = switch statusFilter {
             case .all: true
-            case .unannotated: imageAnnotations.isEmpty
-            case .annotated: !imageAnnotations.isEmpty
-            case .suggestions: imageAnnotations.contains { $0.source == .aiSuggestion }
+            case .unannotated: annotationIndices.isEmpty
+            case .annotated: !annotationIndices.isEmpty
+            case .suggestions: imageHasSuggestions.contains(image.id)
             }
-            guard statusMatches else { return false }
+            guard statusMatches else { return nil }
 
             let queryMatches = query.isEmpty
                 || image.fileName.localizedCaseInsensitiveContains(query)
                 || image.tagIDs.contains { tagNamesByID[$0]?.localizedCaseInsensitiveContains(query) == true }
-                || imageAnnotations.contains { annotation in
-                    categoryNamesByID[annotation.categoryID]?.localizedCaseInsensitiveContains(query) == true
+                || annotationIndices.contains { index in
+                    guard dataset.annotations.indices.contains(index) else { return false }
+                    return categoryNamesByID[dataset.annotations[index].categoryID]?.localizedCaseInsensitiveContains(query) == true
                 }
-            guard queryMatches else { return false }
+            guard queryMatches else { return nil }
 
-            guard !includedCategoryIDs.isEmpty || !excludedCategoryIDs.isEmpty else { return true }
-            let imageCategoryIDs = Set(imageAnnotations.lazy.map(\.categoryID))
-            return imageCategoryIDs.isDisjoint(with: excludedCategoryIDs)
+            guard !includedCategoryIDs.isEmpty || !excludedCategoryIDs.isEmpty else { return image.id }
+            let imageCategoryIDs = Set(annotationIndices.compactMap { index in
+                dataset.annotations.indices.contains(index) ? dataset.annotations[index].categoryID : nil
+            })
+            let matchesCategories = imageCategoryIDs.isDisjoint(with: excludedCategoryIDs)
                 && (includedCategoryIDs.isEmpty || includedCategoryIDs.isSubset(of: imageCategoryIDs))
+            return matchesCategories ? image.id : nil
         }
-        cachedFilteredImages = result
+        cachedFilteredImageIDs = result
         cachedFilterRevision = filterRevision
-        return result
+        return cachedFilteredImageIDs
     }
 
-    var browserImages: [DatasetImage] {
-        if cachedBrowserRevision == filterRevision,
-           cachedBrowserSortKey == imageSortKey,
-           cachedBrowserSortAscending == imageSortAscending {
-            return cachedBrowserImages
+    var filteredImages: [DatasetImage] {
+        guard let dataset else { return [] }
+        return filteredImageIDs.compactMap { id in
+            guard let index = imageIndexByID[id], dataset.images.indices.contains(index) else { return nil }
+            return dataset.images[index]
         }
-        let result = filteredImages.sorted { lhs, rhs in
-            let comparison: ComparisonResult
-            switch imageSortKey {
-            case .name: comparison = lhs.fileName.localizedStandardCompare(rhs.fileName)
-            case .size:
-                let left = Int64(lhs.size.width) * Int64(lhs.size.height)
-                let right = Int64(rhs.size.width) * Int64(rhs.size.height)
-                comparison = left == right ? .orderedSame : (left < right ? .orderedAscending : .orderedDescending)
-            case .split:
-                let order: [DatasetSplit: Int] = [.train: 0, .validation: 1, .test: 2, .unassigned: 3]
-                let left = order[lhs.split, default: 99], right = order[rhs.split, default: 99]
-                comparison = left == right ? .orderedSame : (left < right ? .orderedAscending : .orderedDescending)
-            case .labels:
-                let left = annotationCount(for: lhs.id), right = annotationCount(for: rhs.id)
-                comparison = left == right ? .orderedSame : (left < right ? .orderedAscending : .orderedDescending)
-            }
-            if comparison == .orderedSame { return lhs.id.uuidString < rhs.id.uuidString }
-            return imageSortAscending ? comparison == .orderedAscending : comparison == .orderedDescending
+    }
+
+    var filteredImageCount: Int {
+        filteredImageIDs.count
+    }
+
+    func filteredImageSnapshots() -> [ImageBrowserSnapshot] {
+        guard let dataset else { return [] }
+        return filteredImageIDs.compactMap { id in
+            guard let index = imageIndexByID[id], dataset.images.indices.contains(index) else { return nil }
+            return ImageBrowserSnapshot(image: dataset.images[index], labelCount: annotationCountsByImageID[id] ?? 0, sourceIndex: index)
         }
-        cachedBrowserImages = result
-        cachedBrowserRevision = filterRevision
-        cachedBrowserSortKey = imageSortKey
-        cachedBrowserSortAscending = imageSortAscending
-        return result
     }
 
     func imageURL(for image: DatasetImage) -> URL? {
         dataset?.rootURL?.appending(path: image.relativePath)
     }
 
+    func imageURL(forRelativePath relativePath: String) -> URL? {
+        dataset?.rootURL?.appending(path: relativePath)
+    }
+
+    func image(for id: UUID) -> DatasetImage? {
+        guard let dataset, let index = imageIndexByID[id], dataset.images.indices.contains(index) else { return nil }
+        return dataset.images[index]
+    }
+
     func annotationCount(for imageID: UUID) -> Int {
-        annotationsByImageID[imageID]?.count ?? 0
+        annotationCountsByImageID[imageID] ?? 0
     }
 
     func annotationCount(forCategoryID categoryID: UUID) -> Int {
@@ -788,11 +897,11 @@ final class AppModel {
     }
 
     func neighborImageURLs() -> [URL] {
-        let images = filteredImages
-        guard let selectedImageID, let index = images.firstIndex(where: { $0.id == selectedImageID }) else { return [] }
+        let imageIDs = filteredImageIDs
+        guard let selectedImageID, let index = imageIDs.firstIndex(of: selectedImageID) else { return [] }
         return [index - 1, index + 1].compactMap { neighborIndex in
-            guard images.indices.contains(neighborIndex) else { return nil }
-            return imageURL(for: images[neighborIndex])
+            guard imageIDs.indices.contains(neighborIndex), let image = image(for: imageIDs[neighborIndex]) else { return nil }
+            return imageURL(for: image)
         }
     }
 
@@ -944,13 +1053,13 @@ final class AppModel {
     }
 
     func selectImage(_ id: UUID, modifiers: NSEvent.ModifierFlags) {
-        let images = browserImages
+        let images = filteredImageIDs
         let command = modifiers.contains(.command)
         let shift = modifiers.contains(.shift)
         if shift, let anchor = selectionAnchorImageID,
-           let start = images.firstIndex(where: { $0.id == anchor }),
-           let end = images.firstIndex(where: { $0.id == id }) {
-            let range = Set(images[min(start, end)...max(start, end)].map(\.id))
+           let start = images.firstIndex(of: anchor),
+           let end = images.firstIndex(of: id) {
+            let range = Set(images[min(start, end)...max(start, end)])
             selectedImageIDs.formUnion(range)
         } else if command {
             if selectedImageIDs.contains(id) { selectedImageIDs.remove(id) } else { selectedImageIDs.insert(id) }
@@ -984,7 +1093,7 @@ final class AppModel {
             if dataset.images[index].split != split { dataset.images[index].split = split; changed = true }
         }
         guard changed else { return }
-        self.dataset = dataset
+        assignDataset(dataset, rebuildIndexes: false, invalidateBrowser: true)
         markDirty()
     }
 
@@ -993,17 +1102,22 @@ final class AppModel {
         perform(title: "Smart splitting dataset") { [services] in
             try await services.smartSplit(dataset, trainRatio: trainRatio, validationRatio: validationRatio)
         } completion: { [weak self] result in
-            self?.dataset = result
+            self?.assignDataset(result, rebuildIndexes: false, invalidateBrowser: true)
             self?.markDirty()
         }
     }
 
     func navigate(_ offset: Int) {
-        let images = filteredImages
-        guard !images.isEmpty else { return }
-        let current = images.firstIndex { $0.id == selectedImageID } ?? (offset > 0 ? -1 : images.count)
-        let destination = min(max(current + offset, 0), images.count - 1)
-        selectImage(images[destination].id)
+        let imageIDs = filteredImageIDs
+        guard !imageIDs.isEmpty else { return }
+        let current: Int
+        if let selectedImageID, let index = imageIDs.firstIndex(of: selectedImageID) {
+            current = index
+        } else {
+            current = offset > 0 ? -1 : imageIDs.count
+        }
+        let destination = min(max(current + offset, 0), imageIDs.count - 1)
+        selectImage(imageIDs[destination])
     }
 
     func createAnnotation(geometry: AnnotationGeometry) {
@@ -1037,7 +1151,7 @@ final class AppModel {
     func setGeometry(id: UUID, geometry: AnnotationGeometry) {
         guard var dataset, let index = dataset.annotations.firstIndex(where: { $0.id == id }) else { return }
         dataset.annotations[index].geometry = geometry
-        self.dataset = dataset
+        assignDataset(dataset, rebuildIndexes: false, invalidateBrowser: false)
     }
 
     func deleteSelection() {
@@ -1084,14 +1198,14 @@ final class AppModel {
     func toggleVisibility() {
         guard var dataset, let id = selectedAnnotationID, let index = dataset.annotations.firstIndex(where: { $0.id == id }) else { return }
         dataset.annotations[index].isVisible.toggle()
-        self.dataset = dataset
+        assignDataset(dataset, rebuildIndexes: false, invalidateBrowser: false)
         markDirty()
     }
 
     func toggleLock() {
         guard var dataset, let id = selectedAnnotationID, let index = dataset.annotations.firstIndex(where: { $0.id == id }) else { return }
         dataset.annotations[index].isLocked.toggle()
-        self.dataset = dataset
+        assignDataset(dataset, rebuildIndexes: false, invalidateBrowser: false)
         markDirty()
     }
 
@@ -1146,9 +1260,7 @@ final class AppModel {
         dataset.annotations.removeAll { $0.imageID == id }
         self.dataset = dataset
         if wasSelected {
-            let images = filteredImages
-            let neighbor = images.indices.contains(index - 1) ? images[index - 1] : (images.indices.contains(index) ? images[index] : images.last)
-            selectImage(neighbor?.id)
+            selectImage(filteredImageIDs.first)
         }
         if registeringUndo {
             registerUndo(action: "Delete Image") { model in model.restoreImage(removed, annotations: removedAnnotations) }
@@ -1191,9 +1303,9 @@ final class AppModel {
         self.dataset = dataset
         selectedImageIDs.subtract(removedIDs)
         if let selectedImageID, removedIDs.contains(selectedImageID) {
-            let next = browserImages.first
-            self.selectedImageID = next?.id
-            if let next { selectedImageIDs.insert(next.id) }
+            let next = filteredImageIDs.first
+            self.selectedImageID = next
+            if let next { selectedImageIDs.insert(next) }
         }
         if registeringUndo {
             registerUndo(action: removedImages.count == 1 ? "Delete Image" : "Delete Images") { model in
@@ -1289,7 +1401,8 @@ final class AppModel {
             }
         }
         guard changed else { return tagID }
-        self.dataset = dataset
+        assignDataset(dataset, rebuildIndexes: false, invalidateBrowser: true)
+        refreshTagNames()
         markDirty()
         return tagID
     }
@@ -1309,7 +1422,7 @@ final class AppModel {
             }
         }
         guard changed else { return }
-        self.dataset = dataset
+        assignDataset(dataset, rebuildIndexes: false, invalidateBrowser: true)
         markDirty()
     }
 
@@ -1322,7 +1435,8 @@ final class AppModel {
             dataset.tags[index].name = normalizedName
         }
         if let colorHex { dataset.tags[index].colorHex = colorHex }
-        self.dataset = dataset
+        assignDataset(dataset, rebuildIndexes: false, invalidateBrowser: true)
+        refreshTagNames()
         markDirty()
     }
 
@@ -1332,7 +1446,8 @@ final class AppModel {
         for index in dataset.images.indices {
             dataset.images[index].tagIDs.removeAll { $0 == id }
         }
-        self.dataset = dataset
+        assignDataset(dataset, rebuildIndexes: false, invalidateBrowser: true)
+        refreshTagNames()
         if tagFilterID == id { tagFilterID = nil }
         markDirty()
     }
@@ -1383,6 +1498,16 @@ final class AppModel {
         fitImage()
     }
 
+    private func assignDataset(_ dataset: AnnotationDataset, rebuildIndexes shouldRebuildIndexes: Bool, invalidateBrowser: Bool) {
+        suppressIndexRebuild = true
+        suppressBrowserInvalidation = true
+        self.dataset = dataset
+        suppressIndexRebuild = false
+        suppressBrowserInvalidation = false
+        if shouldRebuildIndexes { rebuildIndexes() }
+        if invalidateBrowser { invalidateFilteredImages() }
+    }
+
     private func markDirty() {
         isDirty = true
         autosaveTask?.cancel()
@@ -1400,26 +1525,39 @@ final class AppModel {
 
     private func rebuildIndexes() {
         guard let dataset else {
-            imagesByID = [:]
-            annotationsByID = [:]
-            annotationsByImageID = [:]
+            imageIndexByID = [:]
+            annotationIndexByID = [:]
+            annotationIndicesByImageID = [:]
+            annotationCountsByImageID = [:]
+            imageHasSuggestions = []
             annotationCountsByCategoryID = [:]
             categoryNamesByID = [:]
             tagNamesByID = [:]
             return
         }
-        imagesByID = Dictionary(uniqueKeysWithValues: dataset.images.map { ($0.id, $0) })
-        annotationsByID = Dictionary(uniqueKeysWithValues: dataset.annotations.map { ($0.id, $0) })
-        annotationsByImageID = Dictionary(grouping: dataset.annotations, by: \.imageID)
-        annotationCountsByCategoryID = dataset.annotations.reduce(into: [:]) { $0[$1.categoryID, default: 0] += 1 }
+        imageIndexByID = Dictionary(uniqueKeysWithValues: dataset.images.indices.map { (dataset.images[$0].id, $0) })
+        annotationIndexByID = Dictionary(uniqueKeysWithValues: dataset.annotations.indices.map { (dataset.annotations[$0].id, $0) })
+        annotationIndicesByImageID = [:]
+        annotationCountsByImageID = [:]
+        imageHasSuggestions = []
+        annotationCountsByCategoryID = [:]
+        for (index, annotation) in dataset.annotations.enumerated() {
+            annotationIndicesByImageID[annotation.imageID, default: []].append(index)
+            annotationCountsByImageID[annotation.imageID, default: 0] += 1
+            annotationCountsByCategoryID[annotation.categoryID, default: 0] += 1
+            if annotation.source == .aiSuggestion { imageHasSuggestions.insert(annotation.imageID) }
+        }
         categoryNamesByID = Dictionary(uniqueKeysWithValues: dataset.categories.map { ($0.id, $0.name) })
         tagNamesByID = Dictionary(uniqueKeysWithValues: dataset.tags.map { ($0.id, $0.name) })
+    }
+
+    private func refreshTagNames() {
+        tagNamesByID = Dictionary(uniqueKeysWithValues: (dataset?.tags ?? []).map { ($0.id, $0.name) })
     }
 
     private func invalidateFilteredImages() {
         filterRevision &+= 1
         browserDataRevision &+= 1
-        cachedBrowserRevision = -1
     }
 
     private func registerUndo(action: String, operation: @escaping @MainActor (AppModel) -> Void) {

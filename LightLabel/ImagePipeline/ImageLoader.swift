@@ -17,8 +17,10 @@ public actor ImageLoader {
 
     public init(maximumConcurrentLoads: Int = 3) {
         self.maximumConcurrentLoads = max(1, maximumConcurrentLoads)
-        cache.countLimit = 300
-        cache.totalCostLimit = 256 * 1_024 * 1_024
+        // Keep scrolling responsive without allowing a large dataset to
+        // retain hundreds of decoded grid thumbnails in RAM.
+        cache.countLimit = 180
+        cache.totalCostLimit = 128 * 1_024 * 1_024
     }
 
     public func thumbnail(at url: URL, maximumPixelSize: Int, appliesOrientation: Bool = true) async throws -> CGImage {

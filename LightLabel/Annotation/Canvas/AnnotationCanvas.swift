@@ -43,6 +43,7 @@ final class AnnotationCanvasView: NSView {
     private var showLabels = true
     private var showHandles = true
     private var loadTask: Task<Void, Never>?
+    private var prefetchTask: Task<Void, Never>?
     private var tracking: NSTrackingArea?
     private var hoverID: UUID?
     private var selectedVertex: (annotationID: UUID, index: Int)?
@@ -65,19 +66,27 @@ final class AnnotationCanvasView: NSView {
 
     required init?(coder: NSCoder) { super.init(coder: coder) }
 
+    deinit {
+        loadTask?.cancel()
+        prefetchTask?.cancel()
+        smartTask?.cancel()
+    }
+
     func configure(imageURL: URL?, prefetchURLs: [URL], imageSize: PixelSize?, annotations: [DatasetAnnotation], categories: [DatasetCategory], selectedID: UUID?, tool: AnnotationTool, viewport: CanvasViewport, showLabels: Bool, showHandles: Bool) {
         self.imageSize = imageSize; self.annotations = annotations; self.categoryStyles = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, ($0.name, NSColor(hex: $0.colorHex))) }); self.selectedID = selectedID; self.tool = tool; self.showLabels = showLabels; self.showHandles = showHandles
         if lastFitRequest != viewport.fitRequest { lastFitRequest = viewport.fitRequest; zoom = 1; pan = .zero }
         if self.imageURL != imageURL {
             smartTask?.cancel(); smartTask = nil; smartPrompt = nil; smartSegmentationRunning = false; draftPoints.removeAll()
-            self.imageURL = imageURL; image = nil; loadTask?.cancel()
+            self.imageURL = imageURL; image = nil; loadTask?.cancel(); prefetchTask?.cancel()
             if let imageURL {
                 loadTask = Task { [weak self] in
                     let loaded = try? await ImageLoader.shared.thumbnail(at: imageURL, maximumPixelSize: 4096, appliesOrientation: false)
                     guard !Task.isCancelled, self?.imageURL == imageURL else { return }
                     self?.image = loaded; self?.needsDisplay = true
                 }
-                Task { await ImageLoader.shared.prefetch(prefetchURLs, maximumPixelSize: 4096, appliesOrientation: false) }
+                prefetchTask = Task {
+                    await ImageLoader.shared.prefetch(prefetchURLs, maximumPixelSize: 1024, appliesOrientation: false)
+                }
             }
         }
         needsDisplay = true
