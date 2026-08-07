@@ -301,7 +301,7 @@ final class AppModel {
             let imageCategoryIDs = Set(imageAnnotations.map { $0.categoryID })
             let classMatches = !imageCategoryIDs.isDisjoint(with: excludedCategoryIDs)
                 ? false
-                : (includedCategoryIDs.isEmpty || !imageCategoryIDs.isDisjoint(with: includedCategoryIDs))
+                : (includedCategoryIDs.isEmpty || includedCategoryIDs.isSubset(of: imageCategoryIDs))
             return splitMatches && statusMatches && queryMatches && classMatches
         }
         cachedFilteredImages = result

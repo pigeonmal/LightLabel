@@ -93,17 +93,19 @@ struct DatasetSidebar: View {
                             }
                             .contentShape(Rectangle())
                         }
-                        if !model.includedCategoryIDs.isEmpty || !model.excludedCategoryIDs.isEmpty {
-                            Button {
-                                model.clearCategoryFilters()
-                            } label: {
-                                Label("Clear Class Filter", systemImage: "xmark.circle")
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                        }
                     } header: {
-                        Text("Filter by Class")
+                        HStack {
+                            Text("Filter by Class")
+                            Spacer()
+                            if !model.includedCategoryIDs.isEmpty || !model.excludedCategoryIDs.isEmpty {
+                                Button { model.clearCategoryFilters() } label: {
+                                    Image(systemName: "xmark.circle")
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("Clear class filter")
+                            }
+                        }
                     }
 
                     Section("Statistics") {
