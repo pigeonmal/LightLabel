@@ -30,6 +30,7 @@
 		6FCEEEBAD23CEFCF3B68D2B5 /* DatasetFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = F36A4BFC48AF9283E7438B40 /* DatasetFormat.swift */; };
 		739D60A08E406F589A1DB3E2 /* StableIDValidatorPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23EB022D5B773D2CF764AE38 /* StableIDValidatorPersistenceTests.swift */; };
 		1A2B3C4D5E6F708192A3B4C5 /* SortingPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F4E3D2C1B0A998877665544 /* SortingPerformanceTests.swift */; };
+		C9E8A2B4F6D0E3C1A7B5D9F2 /* CategoryMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C2A91E3F4D5A6B7C8D9E0F /* CategoryMergeTests.swift */; };
 		7C7C27F8F068C6098B72DA26 /* yolo-malformed.txt in Resources */ = {isa = PBXBuildFile; fileRef = A08FE546E5003580403737B1 /* yolo-malformed.txt */; };
 		8DCB30FE4F3962D883F1E9F4 /* DatasetSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E843399153E527CBCD79274A /* DatasetSidebar.swift */; };
 		97A0E06A131DCAF81858D4A2 /* DatasetBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F3ABB162831EF93712A2E0 /* DatasetBrowser.swift */; };
@@ -79,6 +80,7 @@
 		1F62B12DA61727A844A06671 /* RootView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RootView.swift; path = LightLabel/Views/RootView.swift; sourceTree = "<group>"; };
 		23EB022D5B773D2CF764AE38 /* StableIDValidatorPersistenceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = StableIDValidatorPersistenceTests.swift; path = LightLabelTests/StableIDValidatorPersistenceTests.swift; sourceTree = "<group>"; };
 		9F4E3D2C1B0A998877665544 /* SortingPerformanceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SortingPerformanceTests.swift; path = LightLabelTests/SortingPerformanceTests.swift; sourceTree = "<group>"; };
+		B7C2A91E3F4D5A6B7C8D9E0F /* CategoryMergeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CategoryMergeTests.swift; path = LightLabelTests/CategoryMergeTests.swift; sourceTree = "<group>"; };
 		28F3ABB162831EF93712A2E0 /* DatasetBrowser.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DatasetBrowser.swift; path = LightLabel/Views/DatasetBrowser.swift; sourceTree = "<group>"; };
 		295B35C6AB62CD35B66610F4 /* ProjectPersistence.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProjectPersistence.swift; path = LightLabel/Dataset/Persistence/ProjectPersistence.swift; sourceTree = "<group>"; };
 		2D0932A9A8E4596DAADA56BD /* DatasetValidator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DatasetValidator.swift; path = LightLabel/Dataset/Validation/DatasetValidator.swift; sourceTree = "<group>"; };
@@ -249,6 +251,7 @@
 				DF8408E47649502E1B8E2872 /* PolygonGeometryTests.swift */,
 				23EB022D5B773D2CF764AE38 /* StableIDValidatorPersistenceTests.swift */,
 				9F4E3D2C1B0A998877665544 /* SortingPerformanceTests.swift */,
+				B7C2A91E3F4D5A6B7C8D9E0F /* CategoryMergeTests.swift */,
 				BBAEC91780DBF6C815349C9F /* TestSupport.swift */,
 				FAC1656B05C958C5D4BE09AB /* YOLOFormatTests.swift */,
 			);
@@ -430,6 +433,7 @@
 				C0D7A3ECF2F154253E9E87C7 /* PolygonGeometryTests.swift in Sources */,
 				739D60A08E406F589A1DB3E2 /* StableIDValidatorPersistenceTests.swift in Sources */,
 				1A2B3C4D5E6F708192A3B4C5 /* SortingPerformanceTests.swift in Sources */,
+				C9E8A2B4F6D0E3C1A7B5D9F2 /* CategoryMergeTests.swift in Sources */,
 				37D1A3B1EE04381AA3E1475C /* TestSupport.swift in Sources */,
 				FD88E63CCE0774AAD806E491 /* YOLOFormatTests.swift in Sources */,
 			);

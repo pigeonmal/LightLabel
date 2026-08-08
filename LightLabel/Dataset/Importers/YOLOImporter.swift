@@ -93,10 +93,13 @@ public struct YOLOImporter: Sendable {
         var images: [DatasetImage] = []
         var annotations: [DatasetAnnotation] = []
         var warnings: [DatasetFormatWarning] = []
+        var processedImageDirectories: Set<String> = []
 
         for split in [DatasetSplit.train, .validation, .test, .unassigned] {
             let imageDirectory = resolveImageDirectory(root: rootURL, configuredPath: configuration.paths[split], basePath: configuration.basePath, split: split)
             guard let imageDirectory, fileManager.fileExists(atPath: imageDirectory.path) else { continue }
+            let directoryKey = imageDirectory.standardizedFileURL.path
+            guard processedImageDirectories.insert(directoryKey).inserted else { continue }
             let files = (try? fileManager.contentsOfDirectory(
                 at: imageDirectory,
                 includingPropertiesForKeys: nil,

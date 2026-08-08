@@ -1161,8 +1161,33 @@ final class AppModel {
 
     func updateCategory(id: UUID, name: String? = nil, colorHex: String? = nil) {
         guard var dataset, let index = dataset.categories.firstIndex(where: { $0.id == id }) else { return }
-        if let name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { dataset.categories[index].name = name }
-        if let colorHex { dataset.categories[index].colorHex = colorHex }
+        var changed = false
+        if let colorHex {
+            dataset.categories[index].colorHex = colorHex
+            changed = true
+        }
+        if let name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let newName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let existingIndex = dataset.categories.firstIndex(where: { $0.id != id && $0.name.caseInsensitiveCompare(newName) == .orderedSame }) {
+                // Renaming this class to the name of another class: merge them.
+                let targetID = dataset.categories[existingIndex].id
+                dataset.annotations.indices.forEach { annotationIndex in
+                    if dataset.annotations[annotationIndex].categoryID == id {
+                        dataset.annotations[annotationIndex].categoryID = targetID
+                    }
+                }
+                dataset.categories.remove(at: index)
+                selectedCategoryID = targetID
+                selectedAnnotationID = nil
+                if includedCategoryIDs.remove(id) != nil { includedCategoryIDs.insert(targetID) }
+                if excludedCategoryIDs.remove(id) != nil { excludedCategoryIDs.insert(targetID) }
+                changed = true
+            } else {
+                dataset.categories[index].name = newName
+                changed = true
+            }
+        }
+        guard changed else { return }
         self.dataset = dataset
         markDirty()
     }

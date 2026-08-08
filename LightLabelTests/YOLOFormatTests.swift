@@ -87,6 +87,28 @@ final class YOLOFormatTests: XCTestCase {
         XCTAssertEqual(polygon.area, 0.24, accuracy: 0.000_001)
     }
 
+    func testImagesInFlatImagesDirectoryAreNotImportedTwice() throws {
+        let root = try TestSupport.makeTemporaryDirectory()
+        defer { TestSupport.removeTemporaryDirectory(root) }
+        let imageDirectory = root.appendingPathComponent("images", isDirectory: true)
+        let labelDirectory = root.appendingPathComponent("labels", isDirectory: true)
+        try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: labelDirectory, withIntermediateDirectories: true)
+        let yaml = "path: .\ntrain: images\nnames: [bird]\n"
+        try yaml.write(to: root.appendingPathComponent("data.yaml"), atomically: true, encoding: .utf8)
+        try TestSupport.writeTinyPNG(to: imageDirectory.appendingPathComponent("a.png"))
+        try TestSupport.writeTinyPNG(to: imageDirectory.appendingPathComponent("b.png"))
+        try "0 0.5 0.5 0.5 0.5\n".write(to: labelDirectory.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try "0 0.5 0.5 0.5 0.5\n".write(to: labelDirectory.appendingPathComponent("b.txt"), atomically: true, encoding: .utf8)
+
+        let imported = try YOLOImporter().importDataset(at: root, task: .detection)
+
+        XCTAssertEqual(imported.dataset.images.count, 2)
+        XCTAssertEqual(imported.dataset.annotations.count, 2)
+        XCTAssertEqual(Set(imported.dataset.images.map(\.id)).count, 2)
+        XCTAssertEqual(Set(imported.dataset.annotations.map(\.id)).count, 2)
+    }
+
     func testMalformedRowsProduceLineNumberedWarnings() throws {
         let root = try makeYOLOFixture(labelFixture: "yolo-malformed.txt")
         defer { TestSupport.removeTemporaryDirectory(root) }
