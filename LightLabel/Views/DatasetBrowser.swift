@@ -387,7 +387,7 @@ private final class DatasetListCoordinator: NSObject, NSTableViewDataSource, NST
     }
 
     private func syncSelectionIfNeeded() {
-        guard let tableView, !isSyncingSelection else { return }
+        guard !isSyncingSelection else { return }
         let wanted = model.selectedImageIDs
         guard wanted != lastSelection else { return }
         applySelection(wanted)

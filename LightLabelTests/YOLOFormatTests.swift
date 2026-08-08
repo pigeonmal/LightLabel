@@ -109,6 +109,60 @@ final class YOLOFormatTests: XCTestCase {
         XCTAssertEqual(Set(imported.dataset.annotations.map(\.id)).count, 2)
     }
 
+    func testLabelResolutionWorksWhenDatasetRootIsNamedImages() throws {
+        let parent = try TestSupport.makeTemporaryDirectory()
+        defer { TestSupport.removeTemporaryDirectory(parent) }
+        let root = parent.appendingPathComponent("images", isDirectory: true)
+        let imageDirectory = root.appendingPathComponent("images/train", isDirectory: true)
+        let labelDirectory = root.appendingPathComponent("labels/train", isDirectory: true)
+        try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: labelDirectory, withIntermediateDirectories: true)
+        try "train: images/train\nnames: [bird]\n".write(to: root.appendingPathComponent("data.yaml"), atomically: true, encoding: .utf8)
+        try TestSupport.writeTinyPNG(to: imageDirectory.appendingPathComponent("bird.png"))
+        try "0 0.5 0.5 0.5 0.5\n".write(to: labelDirectory.appendingPathComponent("bird.txt"), atomically: true, encoding: .utf8)
+
+        let imported = try YOLOImporter().importDataset(at: root, task: .detection)
+
+        XCTAssertEqual(imported.dataset.images.count, 1)
+        XCTAssertEqual(imported.dataset.annotations.count, 1)
+    }
+
+    func testSavingSplitMovesImagesAndLabelsTogether() async throws {
+        let root = try TestSupport.makeTemporaryDirectory()
+        defer { TestSupport.removeTemporaryDirectory(root) }
+        let imageDirectory = root.appendingPathComponent("images/train", isDirectory: true)
+        let labelDirectory = root.appendingPathComponent("labels/train", isDirectory: true)
+        try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: labelDirectory, withIntermediateDirectories: true)
+        try "train: images/train\nval: images/val\ntest: images/test\nnames: [bird]\n".write(to: root.appendingPathComponent("data.yaml"), atomically: true, encoding: .utf8)
+        for index in 0..<10 {
+            let name = "frame-\(index).png"
+            try TestSupport.writeTinyPNG(to: imageDirectory.appendingPathComponent(name))
+            try "0 0.5 0.5 0.5 0.5\n".write(to: labelDirectory.appendingPathComponent(name).deletingPathExtension().appendingPathExtension("txt"), atomically: true, encoding: .utf8)
+        }
+
+        let imported = try YOLOImporter().importDataset(at: root, task: .detection).dataset
+        let configuration = SmartSplitConfiguration(trainRatio: 0.5, validationRatio: 0.2)
+        let assignments = SmartSplitPlanner().assignments(images: imported.images, annotations: imported.annotations, configuration: configuration)
+        var splitDataset = imported.withRootURL(root).withSyncMetadata(format: "yolo", source: root.path, task: .detection)
+        for index in splitDataset.images.indices {
+            splitDataset.images[index].split = try XCTUnwrap(assignments[splitDataset.images[index].id])
+        }
+
+        let saved = try await LocalDatasetServices().save(splitDataset)
+        let reimported = try YOLOImporter().importDataset(at: root, task: .detection).dataset
+
+        XCTAssertEqual(saved.images.count, 10)
+        XCTAssertEqual(reimported.images.count, 10)
+        XCTAssertEqual(reimported.annotations.count, 10)
+        let expectedSplits = Dictionary(uniqueKeysWithValues: saved.images.map { ($0.fileName, $0.split) })
+        for image in reimported.images {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent(image.relativePath).path))
+            XCTAssertEqual(image.split, expectedSplits[image.fileName])
+            XCTAssertEqual(reimported.annotations.count(where: { $0.imageID == image.id }), 1)
+        }
+    }
+
     func testMalformedRowsProduceLineNumberedWarnings() throws {
         let root = try makeYOLOFixture(labelFixture: "yolo-malformed.txt")
         defer { TestSupport.removeTemporaryDirectory(root) }

@@ -198,7 +198,7 @@ LightLabel is designed to work fully offline. It contains no analytics, advertis
 - COCO unknown fields are not preserved generically. Only supported IDs, simple `info`, string attributes, score, and `iscrowd` are retained.
 - Raw YOLO decoding supports common rank-two effective tensors only. It does not decode masks, anchors, distribution focal loss, or model-specific multi-head outputs.
 - Core ML segmentation suggestion decoding is an extension point. The current model loader directly supports Vision recognized-object outputs; raw YOLO tensors require decoder configuration in code.
-- Saving a modification automatically synchronizes the source format that was opened or imported: YOLO writes `data.yaml` and labels, and COCO rewrites its source JSON. The internal `.lightlabel/dataset.json` remains the recovery copy.
+- Saving a modification automatically synchronizes the source format that was opened or imported: YOLO keeps image files and labels together when a split changes, writes `data.yaml` and labels, and COCO rewrites its source JSON. The internal `.lightlabel/dataset.json` remains the recovery copy.
 - Polygon editing supports creation, selection, whole-polygon movement, vertex movement, vertex deletion, and click-guided Smart Polygon masks. Edge insertion and multipart polygons are not yet supported. Smart Polygon uses the bundled SAM2 Tiny Core ML model and retries with a wider prompt context when a small-object crop is clipped; Vision foreground instance segmentation remains a fallback.
 - Batch inference/export progress is represented by cancellable UI state, but the current services perform one current-image inference or one export operation at a time.
 

@@ -82,7 +82,7 @@ protocol DatasetApplicationServices: Sendable {
     func openDataset(at url: URL) async throws -> AnnotationDataset
     func createDataset(named name: String, at url: URL, syncFormat: DatasetSyncFormat) async throws -> AnnotationDataset
     func addImages(_ urls: [URL], to dataset: AnnotationDataset) async throws -> AnnotationDataset
-    func save(_ dataset: AnnotationDataset) async throws
+    func save(_ dataset: AnnotationDataset) async throws -> AnnotationDataset
     func importDataset(from url: URL) async throws -> AnnotationDataset
     func mergeDataset(from url: URL, into dataset: AnnotationDataset) async throws -> AnnotationDataset
     func export(_ dataset: AnnotationDataset, to url: URL) async throws
@@ -181,10 +181,12 @@ struct LocalDatasetServices: DatasetApplicationServices {
         return updated
     }
 
-    func save(_ dataset: AnnotationDataset) async throws {
+    func save(_ dataset: AnnotationDataset) async throws -> AnnotationDataset {
         guard let root = dataset.rootURL else { throw DatasetFormatError.invalidData("Dataset has no root folder") }
-        try await ProjectPersistence(directoryURL: root.appendingPathComponent(".lightlabel")).save(dataset)
-        try synchronizeExternalDataset(dataset)
+        let synchronized = try relocateYOLOImages(dataset)
+        try await ProjectPersistence(directoryURL: root.appendingPathComponent(".lightlabel")).save(synchronized)
+        try synchronizeExternalDataset(synchronized)
+        return synchronized
     }
 
     func importDataset(from url: URL) async throws -> AnnotationDataset {
@@ -350,7 +352,117 @@ struct LocalDatasetServices: DatasetApplicationServices {
         for index in result.images.indices where assignments[result.images[index].id] != nil {
             result.images[index].split = assignments[result.images[index].id] ?? .unassigned
         }
+        return try relocateYOLOImages(result)
+    }
+
+    private struct ImageMove {
+        let sourceURL: URL
+        let destinationURL: URL
+    }
+
+    /// YOLO datasets encode the split in the image and label directory paths.
+    /// Keep those two files together when a split changes; changing only the
+    /// label directory produces a valid-looking export with mostly unlabeled
+    /// validation/test images.
+    private func relocateYOLOImages(_ dataset: AnnotationDataset) throws -> AnnotationDataset {
+        guard dataset.metadata[DatasetSyncMetadata.format] == DatasetSyncMetadata.yolo,
+              let root = dataset.rootURL else { return dataset }
+
+        let fileManager = FileManager.default
+        let sourceURLs = dataset.images.map { Self.resolvedImageURL($0, root: root).standardizedFileURL }
+        for (image, sourceURL) in zip(dataset.images, sourceURLs)
+        where !fileManager.fileExists(atPath: sourceURL.path) {
+            throw DatasetFormatError.invalidData("Cannot move \(image.fileName) because the source image is missing.")
+        }
+
+        let baseDestinations = dataset.images.map { image in
+            let split = image.split == .unassigned ? DatasetSplit.train : image.split
+            return root
+                .appendingPathComponent("images/\(split.yoloName)")
+                .appendingPathComponent(image.fileName)
+                .standardizedFileURL
+        }
+        let sourcePaths = Set(sourceURLs.map(\.path))
+        let stationaryPaths = Set(zip(sourceURLs, baseDestinations).compactMap { source, destination in
+            source.path == destination.path ? destination.path : nil
+        })
+        var usedDestinationPaths: Set<String> = []
+        var moves: [ImageMove] = []
+        var result = dataset
+
+        for index in dataset.images.indices {
+            let sourceURL = sourceURLs[index]
+            let preferredURL = baseDestinations[index]
+            var destinationURL = preferredURL
+            let occupiedByStationaryImage = stationaryPaths.contains(preferredURL.path) && sourceURL.path != preferredURL.path
+            let occupiedByExternalFile = fileManager.fileExists(atPath: preferredURL.path) && !sourcePaths.contains(preferredURL.path)
+            if usedDestinationPaths.contains(preferredURL.path) || occupiedByStationaryImage || occupiedByExternalFile {
+                destinationURL = Self.uniqueImageURL(
+                    near: preferredURL,
+                    avoiding: usedDestinationPaths.union(sourcePaths),
+                    fileManager: fileManager
+                )
+            }
+            usedDestinationPaths.insert(destinationURL.path)
+
+            let split = dataset.images[index].split == .unassigned ? DatasetSplit.train : dataset.images[index].split
+            result.images[index].relativePath = "images/\(split.yoloName)/\(destinationURL.lastPathComponent)"
+            result.images[index].fileName = destinationURL.lastPathComponent
+            if sourceURL.path != destinationURL.path {
+                moves.append(.init(sourceURL: sourceURL, destinationURL: destinationURL))
+            }
+        }
+
+        guard !moves.isEmpty else { return result }
+        for split in [DatasetSplit.train, .validation, .test] {
+            try fileManager.createDirectory(
+                at: root.appendingPathComponent("images/\(split.yoloName)"),
+                withIntermediateDirectories: true
+            )
+        }
+
+        let stagingDirectory = root.appendingPathComponent(".lightlabel/split-moves-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
+        var stagedMoves: [(stagedURL: URL, move: ImageMove)] = []
+        do {
+            for (index, move) in moves.enumerated() {
+                let stagedURL = stagingDirectory.appendingPathComponent("\(index)-\(move.sourceURL.lastPathComponent)")
+                try fileManager.moveItem(at: move.sourceURL, to: stagedURL)
+                stagedMoves.append((stagedURL, move))
+            }
+            for staged in stagedMoves {
+                try fileManager.moveItem(at: staged.stagedURL, to: staged.move.destinationURL)
+            }
+            try? fileManager.removeItem(at: stagingDirectory)
+        } catch {
+            // Put files back when a later move fails so a failed save does not
+            // leave the dataset split across a temporary directory.
+            for staged in stagedMoves.reversed() {
+                if fileManager.fileExists(atPath: staged.stagedURL.path),
+                   !fileManager.fileExists(atPath: staged.move.sourceURL.path) {
+                    try? fileManager.moveItem(at: staged.stagedURL, to: staged.move.sourceURL)
+                } else if fileManager.fileExists(atPath: staged.move.destinationURL.path),
+                          !fileManager.fileExists(atPath: staged.move.sourceURL.path) {
+                    try? fileManager.moveItem(at: staged.move.destinationURL, to: staged.move.sourceURL)
+                }
+            }
+            try? fileManager.removeItem(at: stagingDirectory)
+            throw error
+        }
         return result
+    }
+
+    private static func uniqueImageURL(near preferredURL: URL, avoiding paths: Set<String>, fileManager: FileManager) -> URL {
+        let directory = preferredURL.deletingLastPathComponent()
+        let stem = preferredURL.deletingPathExtension().lastPathComponent
+        let extensionName = preferredURL.pathExtension
+        var suffix = 1
+        while true {
+            let name = extensionName.isEmpty ? "\(stem)-\(suffix)" : "\(stem)-\(suffix).\(extensionName)"
+            let candidate = directory.appendingPathComponent(name).standardizedFileURL
+            if !paths.contains(candidate.path) && !fileManager.fileExists(atPath: candidate.path) { return candidate }
+            suffix += 1
+        }
     }
 
     func validate(_ dataset: AnnotationDataset) async throws -> ValidationSummary {
@@ -945,8 +1057,8 @@ final class AppModel {
         guard let dataset, isDirty else { return }
         perform(title: "Saving", showsProgress: false) { [services] in
             try await services.save(dataset)
-            return true
-        } completion: { [weak self] _ in
+        } completion: { [weak self] savedDataset in
+            self?.dataset = savedDataset
             self?.isDirty = false
         }
     }
@@ -1194,11 +1306,14 @@ final class AppModel {
 
     func deleteImage(id: UUID, registeringUndo: Bool = true) {
         guard var dataset, let index = dataset.images.firstIndex(where: { $0.id == id }) else { return }
+        var trashedURL: URL?
         if let root = dataset.rootURL {
             let imageURL = root.appendingPathComponent(dataset.images[index].relativePath)
             if FileManager.default.fileExists(atPath: imageURL.path) {
                 do {
-                    try FileManager.default.trashItem(at: imageURL, resultingItemURL: nil)
+                    var resultingURL: NSURL?
+                    try FileManager.default.trashItem(at: imageURL, resultingItemURL: &resultingURL)
+                    trashedURL = resultingURL.map { $0 as URL }
                 } catch {
                     alertMessage = "Could not move \(dataset.images[index].fileName) to the Trash: \(error.localizedDescription)"
                     return
@@ -1216,7 +1331,9 @@ final class AppModel {
             selectImage(neighbor?.id)
         }
         if registeringUndo {
-            registerUndo(action: "Delete Image") { model in model.restoreImage(removed, annotations: removedAnnotations) }
+            registerUndo(action: "Delete Image") { model in
+                model.restoreImage(removed, annotations: removedAnnotations, trashedURL: trashedURL)
+            }
         }
         markDirty()
     }
@@ -1231,23 +1348,27 @@ final class AppModel {
         guard !removedImages.isEmpty else { return }
         let root = dataset.rootURL
         perform(title: "Moving \(removedImages.count) \(removedImages.count == 1 ? "image" : "images") to Trash") { [removedImages, root] in
-            try await Task.detached(priority: .userInitiated) {
-                guard let root else { return }
+            try await Task.detached(priority: .userInitiated) { () -> [UUID: URL] in
+                guard let root else { return [:] }
+                var trashedURLs: [UUID: URL] = [:]
                 for image in removedImages {
                     try Task.checkCancellation()
                     let imageURL = root.appendingPathComponent(image.relativePath)
                     if FileManager.default.fileExists(atPath: imageURL.path) {
-                        try FileManager.default.trashItem(at: imageURL, resultingItemURL: nil)
+                        var resultingURL: NSURL?
+                        try FileManager.default.trashItem(at: imageURL, resultingItemURL: &resultingURL)
+                        if let resultingURL { trashedURLs[image.id] = resultingURL as URL }
                     }
                 }
+                return trashedURLs
             }.value
-        } completion: { [weak self, removedImages, root] in
+        } completion: { [weak self, removedImages, root] trashedURLs in
             guard let self, self.dataset?.rootURL == root else { return }
-            self.finishDeletingImages(removedImages, registeringUndo: registeringUndo)
+            self.finishDeletingImages(removedImages, trashedURLs: trashedURLs, registeringUndo: registeringUndo)
         }
     }
 
-    private func finishDeletingImages(_ removedImages: [DatasetImage], registeringUndo: Bool) {
+    private func finishDeletingImages(_ removedImages: [DatasetImage], trashedURLs: [UUID: URL], registeringUndo: Bool) {
         guard var dataset else { return }
         let removedIDs = Set(removedImages.map(\.id))
         let removedAnnotations = dataset.annotations.filter { removedIDs.contains($0.imageID) }
@@ -1262,14 +1383,15 @@ final class AppModel {
         }
         if registeringUndo {
             registerUndo(action: removedImages.count == 1 ? "Delete Image" : "Delete Images") { model in
-                model.restoreImages(removedImages, annotations: removedAnnotations)
+                model.restoreImages(removedImages, annotations: removedAnnotations, trashedURLs: trashedURLs)
             }
         }
         markDirty()
     }
 
-    func restoreImage(_ image: DatasetImage, annotations: [DatasetAnnotation]) {
+    func restoreImage(_ image: DatasetImage, annotations: [DatasetAnnotation], trashedURL: URL? = nil) {
         guard var dataset else { return }
+        restoreImageFile(image, from: trashedURL, in: dataset.rootURL)
         dataset.images.append(image)
         dataset.annotations.append(contentsOf: annotations)
         self.dataset = dataset
@@ -1278,8 +1400,9 @@ final class AppModel {
         markDirty()
     }
 
-    func restoreImages(_ images: [DatasetImage], annotations: [DatasetAnnotation]) {
+    func restoreImages(_ images: [DatasetImage], annotations: [DatasetAnnotation], trashedURLs: [UUID: URL] = [:]) {
         guard var dataset else { return }
+        for image in images { restoreImageFile(image, from: trashedURLs[image.id], in: dataset.rootURL) }
         dataset.images.append(contentsOf: images)
         dataset.annotations.append(contentsOf: annotations)
         self.dataset = dataset
@@ -1289,6 +1412,24 @@ final class AppModel {
             model.deleteImages(ids: Set(images.map(\.id)), registeringUndo: false)
         }
         markDirty()
+    }
+
+    private func restoreImageFile(_ image: DatasetImage, from trashedURL: URL?, in root: URL?) {
+        guard let trashedURL, let root else { return }
+        let fileManager = FileManager.default
+        let destination = root.appendingPathComponent(image.relativePath)
+        guard fileManager.fileExists(atPath: trashedURL.path), !fileManager.fileExists(atPath: destination.path) else {
+            if !fileManager.fileExists(atPath: trashedURL.path) {
+                alertMessage = "Could not restore \(image.fileName) because its Trash item is no longer available."
+            }
+            return
+        }
+        do {
+            try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try fileManager.moveItem(at: trashedURL, to: destination)
+        } catch {
+            alertMessage = "Could not restore \(image.fileName): \(error.localizedDescription)"
+        }
     }
 
     func deleteCategory(id: UUID) {

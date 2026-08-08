@@ -201,17 +201,20 @@ public struct YOLOImporter: Sendable {
     }
 
     private func resolveLabelURL(for image: URL, root: URL, split: DatasetSplit) -> URL {
-        let path = image.path
-        let labelPath: String
-        if path.contains("/images/") {
-            labelPath = path.replacingOccurrences(of: "/images/", with: "/labels/")
-        } else if path.contains("/images") {
-            labelPath = path.replacingOccurrences(of: "/images", with: "/labels")
-        } else {
-            let directory = split == .unassigned ? root.appendingPathComponent("labels") : root.appendingPathComponent("labels/\(split.yoloName)")
-            return directory.appendingPathComponent(image.deletingPathExtension().lastPathComponent).appendingPathExtension("txt")
+        // Resolve from the dataset-relative path instead of replacing text in
+        // the absolute path. A dataset stored under a folder named "images"
+        // otherwise replaces the wrong path component (or several components).
+        let relativePath = Self.relativePath(image, from: root)
+        var components = relativePath.split(separator: "/").map(String.init)
+        if let imagesIndex = components.firstIndex(where: { $0.caseInsensitiveCompare("images") == .orderedSame }) {
+            components[imagesIndex] = "labels"
+            return root
+                .appendingPathComponent(components.joined(separator: "/"))
+                .deletingPathExtension()
+                .appendingPathExtension("txt")
         }
-        return URL(fileURLWithPath: labelPath).deletingPathExtension().appendingPathExtension("txt")
+        let directory = split == .unassigned ? root.appendingPathComponent("labels") : root.appendingPathComponent("labels/\(split.yoloName)")
+        return directory.appendingPathComponent(image.deletingPathExtension().lastPathComponent).appendingPathExtension("txt")
     }
 
     private static let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "heic", "tif", "tiff", "bmp", "webp"]

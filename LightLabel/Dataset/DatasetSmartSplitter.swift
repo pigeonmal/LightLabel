@@ -7,8 +7,12 @@ public struct SmartSplitConfiguration: Hashable, Sendable {
     public var testRatio: Double
 
     public init(trainRatio: Double = 0.8, validationRatio: Double = 0.1) {
-        let train = min(max(trainRatio, 0.05), 0.95)
-        let validation = min(max(validationRatio, 0), 0.9)
+        // Keep the planner total and deterministic even when it is called by
+        // code outside the UI with NaN or infinite values.
+        let requestedTrain = trainRatio.isFinite ? trainRatio : 0.8
+        let requestedValidation = validationRatio.isFinite ? validationRatio : 0.1
+        let train = min(max(requestedTrain, 0.05), 0.95)
+        let validation = min(max(requestedValidation, 0), 0.9)
         let remaining = max(0, 1 - train)
         self.trainRatio = train
         self.validationRatio = min(validation, remaining)
@@ -41,7 +45,9 @@ public struct SmartSplitPlanner: Sendable {
         }.sorted { lhs, rhs in
             let leftWeight = lhs.imageIDs.count + lhs.categoryCounts.values.reduce(0, +) * 2
             let rightWeight = rhs.imageIDs.count + rhs.categoryCounts.values.reduce(0, +) * 2
-            return leftWeight == rightWeight ? lhs.imageIDs.count > rhs.imageIDs.count : leftWeight > rightWeight
+            if leftWeight != rightWeight { return leftWeight > rightWeight }
+            if lhs.imageIDs.count != rhs.imageIDs.count { return lhs.imageIDs.count > rhs.imageIDs.count }
+            return stableKey(for: lhs.imageIDs) < stableKey(for: rhs.imageIDs)
         }
 
         let totalCategoryCounts = groups.reduce(into: [UUID: Int]()) { result, group in
@@ -138,7 +144,11 @@ public struct SmartSplitPlanner: Sendable {
         }
         var grouped: [Int: [UUID]] = [:]
         for index in images.indices { grouped[find(index), default: []].append(images[index].id) }
-        return Array(grouped.values)
+        return grouped.values.sorted { stableKey(for: $0) < stableKey(for: $1) }
+    }
+
+    private func stableKey(for imageIDs: [UUID]) -> String {
+        imageIDs.map(\.uuidString).joined(separator: "\u{0}")
     }
 
     private func score(
